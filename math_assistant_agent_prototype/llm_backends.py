@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
+import mimetypes
+import os
 import shutil
 import sys
 import urllib.error
@@ -136,6 +138,85 @@ def call_ollama_chat(
         ) from exc
 
 
+def load_env_file(path: Path | None = None) -> None:
+    env_path = path or Path(__file__).with_name(".env")
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def call_gemini(
+    prompt: str,
+    *,
+    system_prompt: str,
+    model: str,
+    image_path: str | None,
+    image_max_dim: int,
+    image_jpeg_quality: int,
+    max_tokens: int,
+    temperature: float,
+) -> str:
+    load_env_file()
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "Missing GEMINI_API_KEY. Create a .env file next to math_agent.py "
+            "with GEMINI_API_KEY=your_key."
+        )
+
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing dependency: google-genai. Install it with "
+            "`python -m pip install google-genai`."
+        ) from exc
+
+    contents: list[object] = []
+    prepared_image_path: str | None = None
+    should_delete_image = False
+    if image_path:
+        prepared_image_path, should_delete_image = prepare_image_for_model(
+            image_path,
+            max_dim=image_max_dim,
+            quality=image_jpeg_quality,
+        )
+        mime_type = mimetypes.guess_type(prepared_image_path)[0] or "image/jpeg"
+        image_bytes = Path(prepared_image_path).read_bytes()
+        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+
+    contents.append(prompt)
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+            ),
+        )
+        return str(response.text or "").strip()
+    finally:
+        if should_delete_image and prepared_image_path:
+            Path(prepared_image_path).unlink(missing_ok=True)
+
+
 def load_llama_model(
     *,
     repo_id: str = MODEL_REPO,
@@ -237,6 +318,7 @@ def answer_once(
     disable_controller_guard: bool,
     ollama_model: str,
     ollama_host: str,
+    gemini_model: str,
     stream: bool,
     image_max_dim: int,
     image_jpeg_quality: int,
@@ -282,6 +364,18 @@ def answer_once(
             stream=stream,
             image_max_dim=image_max_dim,
             image_jpeg_quality=image_jpeg_quality,
+        )
+
+    if backend == "gemini":
+        return call_gemini(
+            prompt,
+            system_prompt=system_prompt,
+            model=gemini_model,
+            image_path=image_path,
+            image_max_dim=image_max_dim,
+            image_jpeg_quality=image_jpeg_quality,
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
 
     raise ValueError(f"Unsupported answer backend: {backend}")

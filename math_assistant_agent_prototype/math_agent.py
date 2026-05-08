@@ -13,6 +13,7 @@ import sys
 
 from config import (
     DEEPSEEK_OCR_REPO,
+    GEMINI_MODEL,
     HARDCODED_INSTRUCTION_STYLE,
     HARDCODED_OCR_TEXT,
     HARDCODED_QUESTION,
@@ -130,9 +131,9 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--backend",
-        choices=["print", "mock", "llama", "ollama"],
+        choices=["print", "mock", "llama", "ollama", "gemini"],
         default="print",
-        help="Answer backend: print prompt, mock demo, llama GGUF, or Ollama.",
+        help="Answer backend: print prompt, mock demo, llama GGUF, Ollama, or Gemini API.",
     )
     parser.add_argument(
         "--llama-repo",
@@ -172,6 +173,11 @@ def parse_args() -> argparse.Namespace:
         "--model",
         default=OLLAMA_MODEL,
         help="Ollama model name. Use a vision-capable model for image bytes.",
+    )
+    parser.add_argument(
+        "--gemini-model",
+        default=GEMINI_MODEL,
+        help="Gemini API model name.",
     )
     parser.add_argument(
         "--ollama-host",
@@ -239,6 +245,9 @@ def parse_args() -> argparse.Namespace:
 
 def prepare_args(args: argparse.Namespace) -> argparse.Namespace:
     args.image = resolve_image_path(args.image, args.image_index)
+
+    if args.backend != "ollama":
+        args.stream = False
 
     if args.pure_image:
         args.image_only = True

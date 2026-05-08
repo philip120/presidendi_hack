@@ -92,6 +92,7 @@ def answer_from_runtime(
         disable_controller_guard=args.disable_controller_guard,
         ollama_model=args.model,
         ollama_host=args.ollama_host,
+        gemini_model=args.gemini_model,
         stream=args.stream,
         image_max_dim=args.image_max_dim,
         image_jpeg_quality=args.image_jpeg_quality,

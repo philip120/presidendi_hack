@@ -1,43 +1,52 @@
 # Math Assistant Agent Prototype
 
-Small Python prototype for the agentic tutoring prompt.
-
-It does not depend on Flutter. It lets you hardcode a teacher context, student
-question, optional OCR text, and an optional image path, then either:
-
-- print the final prompt,
-- simulate answers with a mock backend,
-- send images directly to a local Ollama vision model,
-- optionally transcribe images with Ollama vision or DeepSeek-OCR,
-- run the GGUF model with `llama-cpp-python`, or
-- send it to a local Ollama model.
-
-## Run
-
-From this folder:
-
-```bash
-python3 math_agent.py
-```
-
-That prints the assembled prompt.
-
-## Simulate Q&A
-
-Run a full question-answer loop without downloading a model:
-
-```bash
-python3 math_agent.py --chat --backend mock
-```
-
-Example session:
+Local Python prototype for a math tutoring agent using the Gemini API.
 
 ```text
-Student> Why do they divide by -2 here?
-Assistant> In `-2x = 6`, the number next to `x` is multiplying the variable...
+image or text problem -> Gemini -> tutoring response
+```
 
-Student> So what is the next step?
-Assistant> Look at `-2x = 6` and find what operation is still attached to `x`...
+The default model is `gemini-3-flash-preview`. OCR is off by default; images are
+sent directly to Gemini.
+
+## Install Locally
+
+### macOS
+
+```bash
+cd /path/to/math_assistant_agent_prototype
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-gemini.txt
+```
+
+### Windows PowerShell
+
+```powershell
+cd path\to\math_assistant_agent_prototype
+py -3 -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-gemini.txt
+```
+
+## Add API Key
+
+Create `.env` in this folder:
+
+```text
+GEMINI_API_KEY=your_api_key_here
+```
+
+`.env` is loaded automatically and is ignored by git.
+
+## Run Image Chat
+
+Use a hardcoded image from `config.py`:
+
+```bash
+python -B math_agent.py --chat --backend gemini --image-index 1 --pure-image
 ```
 
 Useful chat commands:
@@ -45,203 +54,97 @@ Useful chat commands:
 ```text
 /images
 /image 0
-/image ./equation.jpg
+/image 1
+/image ./path/to/photo.jpg
 /clear-image
-/study-guide
 /quit
 ```
 
-Run the same Q&A loop with the GGUF model:
+Ask questions like:
 
-```bash
-python3 math_agent.py --chat --backend llama
+```text
+what do you see?
+how should I solve this?
+is my next step correct?
 ```
 
-Run it with Ollama:
+## Run Text Prompt
+
+Single question:
 
 ```bash
-ollama pull gemma4:26b
-python3 math_agent.py --chat --backend ollama
+python -B math_agent.py --backend gemini --question "How should I solve -2x = 6?" --ocr "-2x = 6"
 ```
 
-Override the hardcoded question/OCR from the command line for text-only tests:
+Interactive text chat:
 
 ```bash
-python3 math_agent.py \
-  --question "Why do they divide by -2 here?" \
-  --ocr "-2x = 6"
+python -B math_agent.py --chat --backend gemini --ocr "-2x = 6"
 ```
 
-Pass an image path. This is useful with a vision-capable local model:
+Change the text problem during chat:
+
+```text
+/ocr 3x + 4 = 19
+/clear-ocr
+```
+
+## Other Commands
+
+Print the prompt without calling Gemini:
 
 ```bash
-python3 math_agent.py \
-  --backend ollama \
-  --model gemma4:26b \
-  --question "What is the next step?" \
-  --image ./equation.jpg \
-  --pure-image
-```
-
-## Hardcoded Images
-
-Open `config.py` and edit:
-
-```python
-HARDCODED_IMAGE_PATHS = [
-    "./images/equation_photo.jpg",
-    "/absolute/path/to/worksheet_crop.png",
-]
-HARDCODED_IMAGE_INDEX = 0
+python -B math_agent.py
 ```
 
 List configured images:
 
 ```bash
-python3 math_agent.py --list-images
+python -B math_agent.py --list-images
 ```
 
-Use a hardcoded image by index. `--pure-image` clears any OCR text and sends
-the image directly to Gemma 26B:
+Create a study guide from the session log:
 
 ```bash
-python3 math_agent.py \
-  --backend ollama \
-  --model gemma4:26b \
-  --image-index 0 \
-  --pure-image \
-  --question "How should I solve this?"
+python -B math_agent.py --study-guide --backend gemini
 ```
 
-You can tune the temporary downscaled image sent to the vision model:
+Use a different Gemini model:
 
 ```bash
-python3 math_agent.py \
-  --backend ollama \
-  --model gemma4:26b \
-  --image-index 1 \
-  --pure-image \
-  --image-max-dim 1280 \
-  --question "How should I solve this?"
+python -B math_agent.py --backend gemini --gemini-model gemini-3-flash-preview --question "Explain fractions"
 ```
 
-This pipeline is:
+## Configure Demo Inputs
 
-```text
-image -> Gemma 26B vision tutor
-```
+Edit `config.py`:
 
-OCR/transcription code is still present for experiments, but it is no longer
-part of the main image path. It only runs if you explicitly use
-`--auto-transcribe-image`, `--transcribe-only`, or `/transcribe`.
-
-Interactive image chat:
-
-```bash
-python3 math_agent.py \
-  --chat \
-  --backend ollama \
-  --model gemma4:26b \
-  --image-index 0 \
-  --pure-image
-```
-
-Inside chat, switch images with:
-
-```text
-/images
-/image 0
-/image ./another_image.jpg
-```
-
-## Run With GGUF / llama-cpp-python
-
-Install:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run the hardcoded model:
-
-```bash
-python3 math_agent.py --backend llama
-```
-
-By default this loads:
-
-```text
-unsloth/gemma-4-26B-A4B-it-GGUF
-gemma-4-26B-A4B-it-UD-IQ4_XS.gguf
-```
-
-Override model settings:
-
-```bash
-python3 math_agent.py \
-  --backend llama \
-  --llama-repo unsloth/gemma-4-26B-A4B-it-GGUF \
-  --llama-file gemma-4-26B-A4B-it-UD-IQ4_XS.gguf \
-  --n-ctx 8192 \
-  --n-gpu-layers 0
-```
-
-The GGUF backend here is text-only. Use `--ocr` for recognized equation text.
-For actual image bytes, use an Ollama vision-capable model.
-
-## Run With Ollama
-
-Run against Ollama:
-
-```bash
-ollama serve
-ollama pull gemma4:26b
-python3 math_agent.py --backend ollama
-```
-
-With image:
-
-```bash
-python3 math_agent.py \
-  --backend ollama \
-  --model gemma4:26b \
-  --image ./equation.jpg \
-  --pure-image \
-  --question "Explain this step"
-```
-
-If your chosen Ollama model does not support images, use explicit `--ocr`
-instead.
-
-## Edit
-
-Open `config.py` and edit:
-
+- `GEMINI_MODEL`
 - `HARDCODED_TEACHER_CONTEXT`
 - `HARDCODED_INSTRUCTION_STYLE`
-- `HARDCODED_STUDENT_STATE`
-- `HARDCODED_RECENT_EXCHANGES`
 - `HARDCODED_QUESTION`
 - `HARDCODED_OCR_TEXT`
 - `HARDCODED_IMAGE_PATHS`
 - `HARDCODED_IMAGE_INDEX`
 
-## Study Guide
+## Troubleshooting
 
-Build the session-end consolidation prompt:
+Missing API key:
 
-```bash
-python3 math_agent.py --study-guide
+```text
+Error: Missing GEMINI_API_KEY
 ```
 
-Run that prompt with Ollama:
+Fix: create `.env` in this folder with `GEMINI_API_KEY=...`.
 
-```bash
-python3 math_agent.py --study-guide --backend ollama
+Missing dependency:
+
+```text
+Error: Missing dependency: google-genai
 ```
 
-Run it with the GGUF backend:
+Fix:
 
 ```bash
-python3 math_agent.py --study-guide --backend llama
+python -m pip install -r requirements-gemini.txt
 ```

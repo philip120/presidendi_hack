@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 OLLAMA_MODEL = "gemma4:26b"
+GEMINI_MODEL = "gemini-3-flash-preview"
 
 MODEL_REPO = "unsloth/gemma-4-26B-A4B-it-GGUF"
 MODEL_FILE = "gemma-4-26B-A4B-it-UD-IQ4_XS.gguf"
