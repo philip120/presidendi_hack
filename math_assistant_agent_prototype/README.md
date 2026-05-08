@@ -1,164 +1,150 @@
 # Math Assistant Agent Prototype
 
-Small Python prototype for the agentic tutoring prompt.
-
-It does not depend on Flutter. It lets you hardcode a teacher context, student
-question, OCR text, and optional image path, then either:
-
-- print the final prompt,
-- simulate answers with a mock backend,
-- run the GGUF model with `llama-cpp-python`, or
-- send it to a local Ollama model.
-
-## Run
-
-From this folder:
-
-```bash
-python3 math_agent.py
-```
-
-That prints the assembled prompt.
-
-## Simulate Q&A
-
-Run a full question-answer loop without downloading a model:
-
-```bash
-python3 math_agent.py --chat --backend mock
-```
-
-Example session:
+Local Python prototype for a math tutoring agent using the Gemini API.
 
 ```text
-Student> Why do they divide by -2 here?
-Assistant> In `-2x = 6`, the number next to `x` is multiplying the variable...
+image or text problem -> Gemini -> tutoring response
+```
 
-Student> So what is the next step?
-Assistant> Look at `-2x = 6` and find what operation is still attached to `x`...
+The default model is `gemini-3-flash-preview`. OCR is off by default; images are
+sent directly to Gemini.
+
+## Install Locally
+
+### macOS
+
+```bash
+cd /path/to/math_assistant_agent_prototype
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-gemini.txt
+```
+
+### Windows PowerShell
+
+```powershell
+cd path\to\math_assistant_agent_prototype
+py -3 -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-gemini.txt
+```
+
+## Add API Key
+
+Create `.env` in this folder:
+
+```text
+GEMINI_API_KEY=your_api_key_here
+```
+
+`.env` is loaded automatically and is ignored by git.
+
+## Run Image Chat
+
+Use a hardcoded image from `config.py`:
+
+```bash
+python -B math_agent.py --chat --backend gemini --image-index 1 --pure-image
 ```
 
 Useful chat commands:
 
 ```text
-/ocr -2x = 6
-/image ./equation.jpg
-/study-guide
+/images
+/image 0
+/image 1
+/image ./path/to/photo.jpg
+/clear-image
 /quit
 ```
 
-Run the same Q&A loop with the GGUF model:
-
-```bash
-python3 math_agent.py --chat --backend llama
-```
-
-Run it with Ollama:
-
-```bash
-python3 math_agent.py --chat --backend ollama --model gemma3:4b
-```
-
-Override the hardcoded question/OCR from the command line:
-
-```bash
-python3 math_agent.py \
-  --question "Why do they divide by -2 here?" \
-  --ocr "-2x = 6"
-```
-
-Pass an image path. This is useful with a vision-capable local model:
-
-```bash
-python3 math_agent.py \
-  --question "What is the next step?" \
-  --image ./equation.jpg
-```
-
-## Run With GGUF / llama-cpp-python
-
-Install:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run the hardcoded model:
-
-```bash
-python3 math_agent.py --backend llama
-```
-
-By default this loads:
+Ask questions like:
 
 ```text
-unsloth/gemma-4-26B-A4B-it-GGUF
-gemma-4-26B-A4B-it-UD-IQ4_XS.gguf
+what do you see?
+how should I solve this?
+is my next step correct?
 ```
 
-Override model settings:
+## Run Text Prompt
+
+Single question:
 
 ```bash
-python3 math_agent.py \
-  --backend llama \
-  --llama-repo unsloth/gemma-4-26B-A4B-it-GGUF \
-  --llama-file gemma-4-26B-A4B-it-UD-IQ4_XS.gguf \
-  --n-ctx 8192 \
-  --n-gpu-layers 0
+python -B math_agent.py --backend gemini --question "How should I solve -2x = 6?" --ocr "-2x = 6"
 ```
 
-The GGUF backend here is text-only. Use `--ocr` for recognized equation text.
-For actual image bytes, use an Ollama vision-capable model.
-
-## Run With Ollama
-
-Run against Ollama:
+Interactive text chat:
 
 ```bash
-ollama serve
-python3 math_agent.py --backend ollama --model gemma3:4b
+python -B math_agent.py --chat --backend gemini --ocr "-2x = 6"
 ```
 
-With image:
+Change the text problem during chat:
+
+```text
+/ocr 3x + 4 = 19
+/clear-ocr
+```
+
+## Other Commands
+
+Print the prompt without calling Gemini:
 
 ```bash
-python3 math_agent.py \
-  --backend ollama \
-  --model gemma3:4b \
-  --image ./equation.jpg \
-  --question "Explain this step"
+python -B math_agent.py
 ```
 
-If your chosen Ollama model does not support images, use `--ocr` instead.
+List configured images:
 
-## Edit
+```bash
+python -B math_agent.py --list-images
+```
 
-Open `math_agent.py` and edit:
+Create a study guide from the session log:
 
+```bash
+python -B math_agent.py --study-guide --backend gemini
+```
+
+Use a different Gemini model:
+
+```bash
+python -B math_agent.py --backend gemini --gemini-model gemini-3-flash-preview --question "Explain fractions"
+```
+
+## Configure Demo Inputs
+
+Edit `config.py`:
+
+- `GEMINI_MODEL`
 - `HARDCODED_TEACHER_CONTEXT`
 - `HARDCODED_INSTRUCTION_STYLE`
-- `HARDCODED_STUDENT_STATE`
-- `HARDCODED_RECENT_EXCHANGES`
 - `HARDCODED_QUESTION`
 - `HARDCODED_OCR_TEXT`
-- `HARDCODED_IMAGE_PATH`
+- `HARDCODED_IMAGE_PATHS`
+- `HARDCODED_IMAGE_INDEX`
 
-## Study Guide
+## Troubleshooting
 
-Build the session-end consolidation prompt:
+Missing API key:
 
-```bash
-python3 math_agent.py --study-guide
+```text
+Error: Missing GEMINI_API_KEY
 ```
 
-Run that prompt with Ollama:
+Fix: create `.env` in this folder with `GEMINI_API_KEY=...`.
 
-```bash
-python3 math_agent.py --study-guide --backend ollama
+Missing dependency:
+
+```text
+Error: Missing dependency: google-genai
 ```
 
-Run it with the GGUF backend:
+Fix:
 
 ```bash
-python3 math_agent.py --study-guide --backend llama
+python -m pip install -r requirements-gemini.txt
 ```

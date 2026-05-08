@@ -1,0 +1,9 @@
+# Optional OCR backend for `--ocr-backend deepseek`.
+# Official DeepSeek-OCR docs are CUDA-oriented. On macOS, install may work,
+# but runtime performance/compatibility is not guaranteed.
+torch>=2.6.0
+transformers==4.46.3
+tokenizers==0.20.3
+einops
+addict
+easydict
