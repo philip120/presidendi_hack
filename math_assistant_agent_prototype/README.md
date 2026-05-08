@@ -3,10 +3,12 @@
 Small Python prototype for the agentic tutoring prompt.
 
 It does not depend on Flutter. It lets you hardcode a teacher context, student
-question, OCR text, and optional image path, then either:
+question, optional OCR text, and an optional image path, then either:
 
 - print the final prompt,
 - simulate answers with a mock backend,
+- send images directly to a local Ollama vision model,
+- optionally transcribe images with Ollama vision or DeepSeek-OCR,
 - run the GGUF model with `llama-cpp-python`, or
 - send it to a local Ollama model.
 
@@ -41,8 +43,10 @@ Assistant> Look at `-2x = 6` and find what operation is still attached to `x`...
 Useful chat commands:
 
 ```text
-/ocr -2x = 6
+/images
+/image 0
 /image ./equation.jpg
+/clear-image
 /study-guide
 /quit
 ```
@@ -56,10 +60,11 @@ python3 math_agent.py --chat --backend llama
 Run it with Ollama:
 
 ```bash
-python3 math_agent.py --chat --backend ollama --model gemma3:4b
+ollama pull gemma4:26b
+python3 math_agent.py --chat --backend ollama
 ```
 
-Override the hardcoded question/OCR from the command line:
+Override the hardcoded question/OCR from the command line for text-only tests:
 
 ```bash
 python3 math_agent.py \
@@ -71,8 +76,82 @@ Pass an image path. This is useful with a vision-capable local model:
 
 ```bash
 python3 math_agent.py \
+  --backend ollama \
+  --model gemma4:26b \
   --question "What is the next step?" \
-  --image ./equation.jpg
+  --image ./equation.jpg \
+  --pure-image
+```
+
+## Hardcoded Images
+
+Open `config.py` and edit:
+
+```python
+HARDCODED_IMAGE_PATHS = [
+    "./images/equation_photo.jpg",
+    "/absolute/path/to/worksheet_crop.png",
+]
+HARDCODED_IMAGE_INDEX = 0
+```
+
+List configured images:
+
+```bash
+python3 math_agent.py --list-images
+```
+
+Use a hardcoded image by index. `--pure-image` clears any OCR text and sends
+the image directly to Gemma 26B:
+
+```bash
+python3 math_agent.py \
+  --backend ollama \
+  --model gemma4:26b \
+  --image-index 0 \
+  --pure-image \
+  --question "How should I solve this?"
+```
+
+You can tune the temporary downscaled image sent to the vision model:
+
+```bash
+python3 math_agent.py \
+  --backend ollama \
+  --model gemma4:26b \
+  --image-index 1 \
+  --pure-image \
+  --image-max-dim 1280 \
+  --question "How should I solve this?"
+```
+
+This pipeline is:
+
+```text
+image -> Gemma 26B vision tutor
+```
+
+OCR/transcription code is still present for experiments, but it is no longer
+part of the main image path. It only runs if you explicitly use
+`--auto-transcribe-image`, `--transcribe-only`, or `/transcribe`.
+
+Interactive image chat:
+
+```bash
+python3 math_agent.py \
+  --chat \
+  --backend ollama \
+  --model gemma4:26b \
+  --image-index 0 \
+  --pure-image
+```
+
+Inside chat, switch images with:
+
+```text
+/images
+/image 0
+/image ./another_image.jpg
 ```
 
 ## Run With GGUF / llama-cpp-python
@@ -116,7 +195,8 @@ Run against Ollama:
 
 ```bash
 ollama serve
-python3 math_agent.py --backend ollama --model gemma3:4b
+ollama pull gemma4:26b
+python3 math_agent.py --backend ollama
 ```
 
 With image:
@@ -124,16 +204,18 @@ With image:
 ```bash
 python3 math_agent.py \
   --backend ollama \
-  --model gemma3:4b \
+  --model gemma4:26b \
   --image ./equation.jpg \
+  --pure-image \
   --question "Explain this step"
 ```
 
-If your chosen Ollama model does not support images, use `--ocr` instead.
+If your chosen Ollama model does not support images, use explicit `--ocr`
+instead.
 
 ## Edit
 
-Open `math_agent.py` and edit:
+Open `config.py` and edit:
 
 - `HARDCODED_TEACHER_CONTEXT`
 - `HARDCODED_INSTRUCTION_STYLE`
@@ -141,7 +223,8 @@ Open `math_agent.py` and edit:
 - `HARDCODED_RECENT_EXCHANGES`
 - `HARDCODED_QUESTION`
 - `HARDCODED_OCR_TEXT`
-- `HARDCODED_IMAGE_PATH`
+- `HARDCODED_IMAGE_PATHS`
+- `HARDCODED_IMAGE_INDEX`
 
 ## Study Guide
 
