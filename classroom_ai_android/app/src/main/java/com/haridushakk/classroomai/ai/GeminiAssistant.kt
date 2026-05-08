@@ -17,6 +17,17 @@ class GeminiAssistant(
         history: List<ChatMessage>,
         newStudentMessage: String,
     ): String = withContext(Dispatchers.IO) {
+        val tutorInput = buildTutorInput(
+            teacherMaterial = teacherMaterial,
+            notebookContent = notebookContent,
+            history = history,
+            newStudentMessage = newStudentMessage,
+        )
+
+        MathGuard.buildControllerGuardResponse(tutorInput)?.let { guardedResponse ->
+            return@withContext guardedResponse
+        }
+
         if (apiKey.isBlank()) {
             error("Set GEMINI_API_KEY in local.properties before calling Gemini.")
         }
@@ -25,58 +36,78 @@ class GeminiAssistant(
             modelName = modelName,
             apiKey = apiKey,
             systemInstruction = content {
-                text(buildSystemPrompt(teacherMaterial, notebookContent))
+                text(TutorPromptBuilder.TUTOR_SYSTEM_PROMPT)
             },
         )
+        val prompt = TutorPromptBuilder.buildTutorPrompt(tutorInput)
+        val chat = generativeModel.startChat(history = emptyList())
 
-        val chat = generativeModel.startChat(
-            history = history.map { message ->
-                content(role = message.geminiRole) {
-                    text(message.text)
-                }
-            },
-        )
-
-        chat.sendMessage(newStudentMessage).text?.trim().orEmpty()
+        chat.sendMessage(prompt).text?.trim().orEmpty()
     }
 
-    private val ChatMessage.geminiRole: String
-        get() = when (role) {
-            ChatRole.Student -> "user"
-            ChatRole.Assistant -> "model"
-        }
-
-    private fun buildSystemPrompt(
+    private fun buildTutorInput(
         teacherMaterial: String,
         notebookContent: String,
-    ): String {
-        val materialPrompt = if (teacherMaterial.isBlank()) {
-            """
-            You are a helpful classroom AI assistant. No teacher material has been loaded for today's lesson yet.
-            Answer general student questions in simple terms, but never complete assignments on the student's behalf.
-            Guide students with hints, ask clarifying questions, and avoid writing the student's notes for them.
-            """.trimIndent()
+        history: List<ChatMessage>,
+        newStudentMessage: String,
+    ): TutorInput {
+        val teacherContext = if (teacherMaterial.isBlank()) {
+            "No teacher material has been loaded for today's lesson yet. " +
+                "Answer from the student's current work and question, but do not complete assignments on the student's behalf."
         } else {
-            """
-            You are a helpful classroom AI assistant. Your role is to help students understand
-            the current lesson - but never give away direct answers. Instead, guide them with
-            hints, ask clarifying questions, and explain concepts in simple terms.
-            Always base your answers on the following course material:
-
-            $teacherMaterial
-
-            If a student asks something outside this material, say:
-            "That seems outside today's lesson - let's focus on what we're covering today."
-            Do not write the student's notes for them. Do not complete assignments on their behalf.
-            """.trimIndent()
+            "Always base your answers on the following course material:\n\n$teacherMaterial\n\n" +
+                "If a student asks something outside this material, say: " +
+                "\"That seems outside today's lesson - let's focus on what we're covering today.\""
         }
 
-        return """
-            $materialPrompt
+        val problemText = listOf(
+            notebookContent.trim(),
+            newStudentMessage.trim(),
+        ).filter { it.isNotBlank() }
+            .joinToString(separator = "\n")
 
-            The student's current notes read as follows - use this as context for their questions
-            but do not rewrite or complete their notes:
-            ${notebookContent.ifBlank { "(empty)" }}
-        """.trimIndent()
+        return TutorInput(
+            question = newStudentMessage,
+            problemText = problemText,
+            teacherContext = teacherContext,
+            instructionStyle = DEFAULT_INSTRUCTION_STYLE,
+            studentState = DEFAULT_STUDENT_STATE,
+            recentExchanges = history.toRecentExchanges(maxExchanges = 3),
+        )
+    }
+
+    private fun List<ChatMessage>.toRecentExchanges(maxExchanges: Int): List<RecentExchange> {
+        val exchanges = mutableListOf<RecentExchange>()
+        var pendingStudentMessage: String? = null
+
+        forEach { message ->
+            when (message.role) {
+                ChatRole.Student -> pendingStudentMessage = message.text
+                ChatRole.Assistant -> {
+                    val studentMessage = pendingStudentMessage
+                    if (!studentMessage.isNullOrBlank() || message.text.isNotBlank()) {
+                        exchanges += RecentExchange(
+                            student = studentMessage.orEmpty(),
+                            assistant = message.text,
+                        )
+                    }
+                    pendingStudentMessage = null
+                }
+            }
+        }
+
+        return exchanges.takeLast(maxExchanges)
+    }
+
+    private companion object {
+        const val DEFAULT_INSTRUCTION_STYLE =
+            "Use Socratic questioning. Do not give the final answer immediately unless the " +
+                "student has already shown the key step. Give one hint at a time. Use the same " +
+                "notation used in class. Do not loop: once the student gives the right operation " +
+                "or a correct answer, confirm it directly and explain why."
+
+        const val DEFAULT_STUDENT_STATE =
+            "Use only this session's notes and recent messages to infer the student's current understanding. " +
+                "Do not assume a stable profile beyond the current classroom session."
     }
 }
