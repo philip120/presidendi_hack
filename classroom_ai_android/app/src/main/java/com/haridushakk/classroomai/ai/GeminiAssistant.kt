@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 
 class GeminiAssistant(
     private val apiKey: String,
+    private val modelName: String,
 ) {
     suspend fun sendStudentMessage(
         teacherMaterial: String,
@@ -16,12 +17,12 @@ class GeminiAssistant(
         history: List<ChatMessage>,
         newStudentMessage: String,
     ): String = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank() || apiKey == "") {
+        if (apiKey.isBlank()) {
             error("Set GEMINI_API_KEY in local.properties before calling Gemini.")
         }
 
         val generativeModel = GenerativeModel(
-            modelName = MODEL_NAME,
+            modelName = modelName,
             apiKey = apiKey,
             systemInstruction = content {
                 text(buildSystemPrompt(teacherMaterial, notebookContent))
@@ -77,9 +78,5 @@ class GeminiAssistant(
             but do not rewrite or complete their notes:
             ${notebookContent.ifBlank { "(empty)" }}
         """.trimIndent()
-    }
-
-    private companion object {
-        const val MODEL_NAME = "gemini-2.0-flash"
     }
 }

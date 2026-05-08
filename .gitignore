@@ -1,0 +1,13 @@
+.DS_Store
+**/.DS_Store
+**/__pycache__/
+*.py[cod]
+
+.idea/
+**/.idea/
+
+gemini_venv/
+**/venv/
+
+**/.gradle/
+**/build/

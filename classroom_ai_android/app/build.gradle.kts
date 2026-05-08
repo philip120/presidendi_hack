@@ -17,6 +17,19 @@ fun String.asBuildConfigString(): String {
     return "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
+fun String.normalizedLocalPropertyValue(): String {
+    val trimmed = trim()
+    return when {
+        trimmed.length >= 2 && trimmed.first() == '"' && trimmed.last() == '"' -> {
+            trimmed.substring(1, trimmed.lastIndex)
+        }
+        trimmed.length >= 2 && trimmed.first() == '\'' && trimmed.last() == '\'' -> {
+            trimmed.substring(1, trimmed.lastIndex)
+        }
+        else -> trimmed
+    }
+}
+
 android {
     namespace = "com.haridushakk.classroomai"
     compileSdk = 36
@@ -28,8 +41,14 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        val geminiApiKey = localProperties.getProperty("GEMINI_API_KEY", "")
+        val geminiApiKey = localProperties
+            .getProperty("GEMINI_API_KEY", "")
+            .normalizedLocalPropertyValue()
+        val geminiModelName = localProperties
+            .getProperty("GEMINI_MODEL_NAME", "gemini-3-flash-preview")
+            .normalizedLocalPropertyValue()
         buildConfigField("String", "GEMINI_API_KEY", geminiApiKey.asBuildConfigString())
+        buildConfigField("String", "GEMINI_MODEL_NAME", geminiModelName.asBuildConfigString())
     }
 
     buildFeatures {

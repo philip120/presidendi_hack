@@ -117,11 +117,12 @@ class StudentViewModel(
                         isTyping = false,
                     )
                 }
-            }.onFailure {
+            }.onFailure { throwable ->
                 _uiState.update { currentState ->
                     currentState.copy(
                         isTyping = false,
-                        errorMessage = "Something went wrong, please try again",
+                        errorMessage = throwable.message?.takeIf { it.isNotBlank() }
+                            ?: "Something went wrong, please try again",
                     )
                 }
             }

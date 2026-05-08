@@ -24,10 +24,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FormatBold
-import androidx.compose.material.icons.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -226,7 +226,7 @@ private fun NotebookPanel(
                 onClick = { updateNotes(fieldValue.withBulletList()) },
             ) {
                 Icon(
-                    imageVector = Icons.Filled.FormatListBulleted,
+                    imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
                     contentDescription = "Bullet list",
                 )
             }
@@ -339,7 +339,7 @@ private fun ChatPanel(
                 modifier = Modifier.size(56.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Send,
+                    imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
                 )
             }
