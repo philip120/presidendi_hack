@@ -8,6 +8,7 @@ internal data class RecentExchange(
 internal data class TutorInput(
     val question: String,
     val problemText: String,
+    val hasWorkspaceImage: Boolean,
     val teacherContext: String,
     val instructionStyle: String,
     val studentState: String,

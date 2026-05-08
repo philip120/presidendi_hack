@@ -1,6 +1,9 @@
 package com.haridushakk.classroomai.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,8 +29,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatBold
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -40,6 +46,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -51,7 +58,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -61,8 +72,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.haridushakk.classroomai.data.ChatMessage
 import com.haridushakk.classroomai.data.ChatRole
+import com.haridushakk.classroomai.ui.DrawingStroke
+import com.haridushakk.classroomai.ui.DrawingTool
 import com.haridushakk.classroomai.ui.StudentUiState
 import com.haridushakk.classroomai.ui.StudentViewModel
+import com.haridushakk.classroomai.ui.WorkspaceMode
 import kotlinx.coroutines.delay
 import kotlin.math.max
 import kotlin.math.min
@@ -89,6 +103,15 @@ fun StudentRoute(
         onClearNotes = viewModel::clearNotes,
         onDraftMessageChanged = viewModel::onDraftMessageChanged,
         onSendMessage = viewModel::sendMessage,
+        onAskWorkspace = viewModel::askAboutWorkspace,
+        onWorkspaceModeChanged = viewModel::onWorkspaceModeChanged,
+        onDrawingToolChanged = viewModel::onDrawingToolChanged,
+        onDrawingCanvasSizeChanged = viewModel::onDrawingCanvasSizeChanged,
+        onBeginDrawing = viewModel::beginDrawing,
+        onContinueDrawing = viewModel::continueDrawing,
+        onEndDrawing = viewModel::endDrawing,
+        onUndoDrawing = viewModel::undoDrawing,
+        onClearDrawing = viewModel::clearDrawing,
     )
 }
 
@@ -102,6 +125,15 @@ private fun StudentScreen(
     onClearNotes: () -> Unit,
     onDraftMessageChanged: (String) -> Unit,
     onSendMessage: () -> Unit,
+    onAskWorkspace: () -> Unit,
+    onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
+    onDrawingToolChanged: (DrawingTool) -> Unit,
+    onDrawingCanvasSizeChanged: (Int, Int) -> Unit,
+    onBeginDrawing: (Float, Float) -> Unit,
+    onContinueDrawing: (Float, Float) -> Unit,
+    onEndDrawing: () -> Unit,
+    onUndoDrawing: () -> Unit,
+    onClearDrawing: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -129,10 +161,19 @@ private fun StudentScreen(
         ) {
             if (maxWidth >= 840.dp) {
                 Row(modifier = Modifier.fillMaxSize()) {
-                    NotebookPanel(
-                        notes = uiState.notes,
+                    WorkspacePanel(
+                        uiState = uiState,
                         onNotesChanged = onNotesChanged,
                         onClearNotes = onClearNotes,
+                        onAskWorkspace = onAskWorkspace,
+                        onWorkspaceModeChanged = onWorkspaceModeChanged,
+                        onDrawingToolChanged = onDrawingToolChanged,
+                        onDrawingCanvasSizeChanged = onDrawingCanvasSizeChanged,
+                        onBeginDrawing = onBeginDrawing,
+                        onContinueDrawing = onContinueDrawing,
+                        onEndDrawing = onEndDrawing,
+                        onUndoDrawing = onUndoDrawing,
+                        onClearDrawing = onClearDrawing,
                         modifier = Modifier
                             .fillMaxHeight()
                             .weight(3f),
@@ -152,10 +193,19 @@ private fun StudentScreen(
                 }
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    NotebookPanel(
-                        notes = uiState.notes,
+                    WorkspacePanel(
+                        uiState = uiState,
                         onNotesChanged = onNotesChanged,
                         onClearNotes = onClearNotes,
+                        onAskWorkspace = onAskWorkspace,
+                        onWorkspaceModeChanged = onWorkspaceModeChanged,
+                        onDrawingToolChanged = onDrawingToolChanged,
+                        onDrawingCanvasSizeChanged = onDrawingCanvasSizeChanged,
+                        onBeginDrawing = onBeginDrawing,
+                        onContinueDrawing = onContinueDrawing,
+                        onEndDrawing = onEndDrawing,
+                        onUndoDrawing = onUndoDrawing,
+                        onClearDrawing = onClearDrawing,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(3f),
@@ -179,19 +229,28 @@ private fun StudentScreen(
 }
 
 @Composable
-private fun NotebookPanel(
-    notes: String,
+private fun WorkspacePanel(
+    uiState: StudentUiState,
     onNotesChanged: (String) -> Unit,
     onClearNotes: () -> Unit,
+    onAskWorkspace: () -> Unit,
+    onWorkspaceModeChanged: (WorkspaceMode) -> Unit,
+    onDrawingToolChanged: (DrawingTool) -> Unit,
+    onDrawingCanvasSizeChanged: (Int, Int) -> Unit,
+    onBeginDrawing: (Float, Float) -> Unit,
+    onContinueDrawing: (Float, Float) -> Unit,
+    onEndDrawing: () -> Unit,
+    onUndoDrawing: () -> Unit,
+    onClearDrawing: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var fieldValue by remember {
-        mutableStateOf(TextFieldValue(notes, selection = TextRange(notes.length)))
+        mutableStateOf(TextFieldValue(uiState.notes, selection = TextRange(uiState.notes.length)))
     }
 
-    LaunchedEffect(notes) {
-        if (notes != fieldValue.text) {
-            fieldValue = TextFieldValue(notes, selection = TextRange(notes.length))
+    LaunchedEffect(uiState.notes) {
+        if (uiState.notes != fieldValue.text) {
+            fieldValue = TextFieldValue(uiState.notes, selection = TextRange(uiState.notes.length))
         }
     }
 
@@ -207,15 +266,115 @@ private fun NotebookPanel(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = "Notebook",
+                text = "Workspace",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
+            Button(
+                onClick = onAskWorkspace,
+                enabled = !uiState.isTyping &&
+                    (uiState.notes.isNotBlank() ||
+                        uiState.drawingStrokes.isNotEmpty() ||
+                        uiState.activeDrawingStroke != null ||
+                        uiState.draftMessage.isNotBlank()),
+            ) {
+                Text(text = "Ask")
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            WorkspaceMode.entries.forEach { mode ->
+                TextButton(
+                    onClick = { onWorkspaceModeChanged(mode) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        text = mode.label,
+                        fontWeight = if (uiState.workspaceMode == mode) {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        },
+                    )
+                }
+            }
+        }
+        when (uiState.workspaceMode) {
+            WorkspaceMode.Text -> {
+                TextEditor(
+                    fieldValue = fieldValue,
+                    onValueChange = ::updateNotes,
+                    onClearNotes = {
+                        fieldValue = TextFieldValue("")
+                        onClearNotes()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            WorkspaceMode.Draw -> {
+                DrawingWorkspace(
+                    uiState = uiState,
+                    onDrawingToolChanged = onDrawingToolChanged,
+                    onDrawingCanvasSizeChanged = onDrawingCanvasSizeChanged,
+                    onBeginDrawing = onBeginDrawing,
+                    onContinueDrawing = onContinueDrawing,
+                    onEndDrawing = onEndDrawing,
+                    onUndoDrawing = onUndoDrawing,
+                    onClearDrawing = onClearDrawing,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            WorkspaceMode.Mixed -> {
+                OutlinedTextField(
+                    value = fieldValue,
+                    onValueChange = ::updateNotes,
+                    placeholder = { Text(text = "Type problem text or notes...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 180.dp),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        lineHeight = 24.sp,
+                    ),
+                )
+                DrawingWorkspace(
+                    uiState = uiState,
+                    onDrawingToolChanged = onDrawingToolChanged,
+                    onDrawingCanvasSizeChanged = onDrawingCanvasSizeChanged,
+                    onBeginDrawing = onBeginDrawing,
+                    onContinueDrawing = onContinueDrawing,
+                    onEndDrawing = onEndDrawing,
+                    onUndoDrawing = onUndoDrawing,
+                    onClearDrawing = onClearDrawing,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TextEditor(
+    fieldValue: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    onClearNotes: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
             IconButton(
-                onClick = { updateNotes(fieldValue.withBoldMarkers()) },
+                onClick = { onValueChange(fieldValue.withBoldMarkers()) },
             ) {
                 Icon(
                     imageVector = Icons.Filled.FormatBold,
@@ -223,17 +382,14 @@ private fun NotebookPanel(
                 )
             }
             IconButton(
-                onClick = { updateNotes(fieldValue.withBulletList()) },
+                onClick = { onValueChange(fieldValue.withBulletList()) },
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
                     contentDescription = "Bullet list",
                 )
             }
-            IconButton(onClick = {
-                fieldValue = TextFieldValue("")
-                onClearNotes()
-            }) {
+            IconButton(onClick = onClearNotes) {
                 Icon(
                     imageVector = Icons.Filled.DeleteOutline,
                     contentDescription = "Clear notes",
@@ -242,7 +398,7 @@ private fun NotebookPanel(
         }
         OutlinedTextField(
             value = fieldValue,
-            onValueChange = ::updateNotes,
+            onValueChange = onValueChange,
             placeholder = { Text(text = "Start taking notes here...") },
             modifier = Modifier
                 .fillMaxWidth()
@@ -250,6 +406,181 @@ private fun NotebookPanel(
             textStyle = MaterialTheme.typography.bodyLarge.copy(
                 lineHeight = 24.sp,
             ),
+        )
+    }
+}
+
+private val WorkspaceMode.label: String
+    get() = when (this) {
+        WorkspaceMode.Text -> "Text"
+        WorkspaceMode.Draw -> "Draw"
+        WorkspaceMode.Mixed -> "Mixed"
+    }
+
+@Composable
+private fun DrawingWorkspace(
+    uiState: StudentUiState,
+    onDrawingToolChanged: (DrawingTool) -> Unit,
+    onDrawingCanvasSizeChanged: (Int, Int) -> Unit,
+    onBeginDrawing: (Float, Float) -> Unit,
+    onContinueDrawing: (Float, Float) -> Unit,
+    onEndDrawing: () -> Unit,
+    onUndoDrawing: () -> Unit,
+    onClearDrawing: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DrawingToolButton(
+                selected = uiState.drawingTool == DrawingTool.Pen,
+                onClick = { onDrawingToolChanged(DrawingTool.Pen) },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Pen",
+                    )
+                },
+            )
+            DrawingToolButton(
+                selected = uiState.drawingTool == DrawingTool.Eraser,
+                onClick = { onDrawingToolChanged(DrawingTool.Eraser) },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.DeleteOutline,
+                        contentDescription = "Eraser",
+                    )
+                },
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(
+                onClick = onUndoDrawing,
+                enabled = uiState.drawingStrokes.isNotEmpty(),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = "Undo",
+                )
+            }
+            IconButton(
+                onClick = onClearDrawing,
+                enabled = uiState.drawingStrokes.isNotEmpty() || uiState.activeDrawingStroke != null,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DeleteOutline,
+                    contentDescription = "Clear drawing",
+                )
+            }
+        }
+        DrawingCanvas(
+            strokes = uiState.drawingStrokes,
+            activeStroke = uiState.activeDrawingStroke,
+            onDrawingCanvasSizeChanged = onDrawingCanvasSizeChanged,
+            onBeginDrawing = onBeginDrawing,
+            onContinueDrawing = onContinueDrawing,
+            onEndDrawing = onEndDrawing,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun DrawingToolButton(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+) {
+    if (selected) {
+        FilledIconButton(
+            onClick = onClick,
+            modifier = Modifier.size(44.dp),
+            content = icon,
+        )
+    } else {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.size(44.dp),
+            content = icon,
+        )
+    }
+}
+
+@Composable
+private fun DrawingCanvas(
+    strokes: List<DrawingStroke>,
+    activeStroke: DrawingStroke?,
+    onDrawingCanvasSizeChanged: (Int, Int) -> Unit,
+    onBeginDrawing: (Float, Float) -> Unit,
+    onContinueDrawing: (Float, Float) -> Unit,
+    onEndDrawing: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline,
+                shape = RoundedCornerShape(8.dp),
+            ),
+        shape = RoundedCornerShape(8.dp),
+        color = Color.White,
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { size ->
+                    onDrawingCanvasSizeChanged(size.width, size.height)
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            onBeginDrawing(offset.x, offset.y)
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            onContinueDrawing(change.position.x, change.position.y)
+                        },
+                        onDragEnd = onEndDrawing,
+                        onDragCancel = onEndDrawing,
+                    )
+                },
+        ) {
+            (strokes + listOfNotNull(activeStroke)).forEach { stroke ->
+                drawStroke(stroke)
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStroke(stroke: DrawingStroke) {
+    if (stroke.points.isEmpty()) return
+
+    val color = if (stroke.isEraser) Color.White else Color(stroke.color)
+    if (stroke.points.size == 1) {
+        val point = stroke.points.first()
+        drawCircle(
+            color = color,
+            radius = stroke.widthPx / 2f,
+            center = Offset(point.x, point.y),
+        )
+        return
+    }
+
+    stroke.points.zipWithNext().forEach { (start, end) ->
+        drawLine(
+            color = color,
+            start = Offset(start.x, start.y),
+            end = Offset(end.x, end.y),
+            strokeWidth = stroke.widthPx,
+            cap = StrokeCap.Round,
         )
     }
 }

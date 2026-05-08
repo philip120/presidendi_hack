@@ -17,6 +17,17 @@ internal object TutorPromptBuilder {
     )
 
     fun buildTutorPrompt(data: TutorInput): String {
+        val imageNote = if (data.hasWorkspaceImage) {
+            """
+            A workspace image is attached. It may include handwritten math, diagrams, circled areas, or annotations from the student.
+
+            If an image is attached, inspect the image directly. Use notebook text as a helper
+            when present, but do not ignore the image.
+            """.trimIndent()
+        } else {
+            "No image is attached."
+        }
+
         return """
             You are an on-device math tutor helping a student during class.
 
@@ -57,7 +68,7 @@ internal object TutorPromptBuilder {
             </loop_prevention_notes>
 
             <current_problem_input>
-            No image is attached.
+            $imageNote
 
             Student notebook and current work:
             ${cleanBlock(data.problemText)}
@@ -75,8 +86,8 @@ internal object TutorPromptBuilder {
             </current_attempt_feedback>
 
             <answer_rules>
-            - Answer only using the teacher context, notebook/current work, and recent conversation.
-            - If the problem text is unclear, ask a clarification question instead of guessing.
+            - Answer only using the teacher context, notebook/current work, attached image, and recent conversation.
+            - If the notebook/image is unclear, ask a clarification question instead of guessing.
             - Keep the answer short: usually 3 to 6 sentences.
             - Prefer hints before the student has tried the key step.
             - Once the student has tried the key step or gives the correct answer, confirm directly.

@@ -1,5 +1,6 @@
 package com.haridushakk.classroomai.ai
 
+import android.graphics.Bitmap
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.haridushakk.classroomai.data.ChatMessage
@@ -16,12 +17,14 @@ class GeminiAssistant(
         notebookContent: String,
         history: List<ChatMessage>,
         newStudentMessage: String,
+        workspaceImage: Bitmap? = null,
     ): String = withContext(Dispatchers.IO) {
         val tutorInput = buildTutorInput(
             teacherMaterial = teacherMaterial,
             notebookContent = notebookContent,
             history = history,
             newStudentMessage = newStudentMessage,
+            hasWorkspaceImage = workspaceImage != null,
         )
 
         MathGuard.buildControllerGuardResponse(tutorInput)?.let { guardedResponse ->
@@ -40,9 +43,12 @@ class GeminiAssistant(
             },
         )
         val prompt = TutorPromptBuilder.buildTutorPrompt(tutorInput)
-        val chat = generativeModel.startChat(history = emptyList())
+        val promptContent = content {
+            workspaceImage?.let { image(it) }
+            text(prompt)
+        }
 
-        chat.sendMessage(prompt).text?.trim().orEmpty()
+        generativeModel.generateContent(promptContent).text?.trim().orEmpty()
     }
 
     private fun buildTutorInput(
@@ -50,6 +56,7 @@ class GeminiAssistant(
         notebookContent: String,
         history: List<ChatMessage>,
         newStudentMessage: String,
+        hasWorkspaceImage: Boolean,
     ): TutorInput {
         val teacherContext = if (teacherMaterial.isBlank()) {
             "No teacher material has been loaded for today's lesson yet. " +
@@ -69,6 +76,7 @@ class GeminiAssistant(
         return TutorInput(
             question = newStudentMessage,
             problemText = problemText,
+            hasWorkspaceImage = hasWorkspaceImage,
             teacherContext = teacherContext,
             instructionStyle = DEFAULT_INSTRUCTION_STYLE,
             studentState = DEFAULT_STUDENT_STATE,
