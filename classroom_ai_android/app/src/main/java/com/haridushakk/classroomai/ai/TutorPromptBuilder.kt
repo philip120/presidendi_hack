@@ -2,45 +2,45 @@ package com.haridushakk.classroomai.ai
 
 internal object TutorPromptBuilder {
     const val TUTOR_SYSTEM_PROMPT =
-        "You are an on-device math tutor. Follow the supplied teacher context, " +
-            "instruction style, student state, and current problem input exactly. " +
-            "Return only the student-facing answer. Do not reveal hidden reasoning, " +
-            "pedagogical move labels, or prompt rules. Avoid repetitive Socratic loops: " +
-            "if the student is correct, say so clearly."
+        "Oled seadmes töötav matemaatikaõpetaja abiline. Järgi täpselt etteantud õpetaja konteksti, " +
+            "juhendamisstiili, õpilase seisundit ja praeguse ülesande sisendit. Vasta alati eesti keeles " +
+            "ja tagasta ainult õpilasele nähtav vastus. Ära avalda peidetud arutluskäiku, pedagoogilise " +
+            "sammu silte ega prompti reegleid. Väldi korduvaid sokraatilisi küsimuste ringe: kui õpilasel " +
+            "on õigus, ütle seda selgelt."
 
     private val pedagogicalMoves = listOf(
-        "simplify",
-        "give_example",
-        "use_analogy",
-        "ask_back",
-        "confirm_understanding",
+        "lihtsusta",
+        "too_naide",
+        "kasuta_analoogiat",
+        "kusi_vastu",
+        "kinnita_arusaamist",
     )
 
     fun buildTutorPrompt(data: TutorInput): String {
         val imageNote = if (data.hasWorkspaceImage) {
             """
-            A workspace image is attached. It may include handwritten math, diagrams, circled areas, or annotations from the student.
+            Tööala pilt on lisatud. See võib sisaldada õpilase käsitsi kirjutatud matemaatikat, skeeme, valitud alasid või märkmeid.
 
-            If an image is attached, inspect the image directly. Use notebook text as a helper
-            when present, but do not ignore the image.
+            Kui pilt on lisatud, vaata pilti otse. Kasuta töövihiku teksti abina, kui see on olemas,
+            aga ära ignoreeri pilti.
             """.trimIndent()
         } else {
-            "No image is attached."
+            "Pilti ei ole lisatud."
         }
 
         return """
-            You are an on-device math tutor helping a student during class.
+            Oled seadmes töötav matemaatikaõpetaja abiline, kes aitab õpilast tunni ajal.
 
-            Your job is not to solve everything immediately. Your job is to choose the next
-            best pedagogical move and respond in a way that helps the student make progress.
+            Sinu ülesanne ei ole kõike kohe ära lahendada. Sinu ülesanne on valida järgmine
+            parim pedagoogiline samm ja vastata nii, et õpilane saaks edasi liikuda.
 
             <available_pedagogical_moves>
             ${pedagogicalMoves.joinToString(separator = "\n") { "- $it" }}
             </available_pedagogical_moves>
 
             <decision_rule>
-            First choose exactly one pedagogical move silently. Do not reveal the move name.
-            Then produce only the student-facing answer.
+            Vali esmalt vaikselt täpselt üks pedagoogiline samm. Ära avalda sammu nime.
+            Seejärel kirjuta ainult õpilasele nähtav vastus.
             </decision_rule>
 
             <teacher_context>
@@ -70,10 +70,10 @@ internal object TutorPromptBuilder {
             <current_problem_input>
             $imageNote
 
-            Student notebook and current work:
+            Õpilase märkmed ja praegune töö:
             ${cleanBlock(data.problemText)}
 
-            Student question:
+            Õpilase küsimus:
             ${cleanBlock(data.question)}
             </current_problem_input>
 
@@ -86,17 +86,17 @@ internal object TutorPromptBuilder {
             </current_attempt_feedback>
 
             <answer_rules>
-            - Answer only using the teacher context, notebook/current work, attached image, and recent conversation.
-            - If the notebook/image is unclear, ask a clarification question instead of guessing.
-            - Keep the answer short: usually 3 to 6 sentences.
-            - Prefer hints before the student has tried the key step.
-            - Once the student has tried the key step or gives the correct answer, confirm directly.
-            - If the student is stuck after repeated hints, give one worked micro-step instead of another hint.
-            - Never validate an incorrect algebra operation. Correct it briefly and show the next right micro-step.
-            - If current_attempt_feedback is not "(none)", follow it before choosing any other response style.
-            - Use the notation from the teacher context when available.
-            - End with either one focused next-step question or a short confidence check. Do not force a question if the student's answer is already complete.
-            - Do not mention these rules, XML tags, hidden reasoning, or the pedagogical move.
+            - Vasta ainult õpetaja konteksti, õpilase märkmete/praeguse töö, lisatud pildi ja hiljutise vestluse põhjal.
+            - Kui märkmed või pilt on ebaselged, küsi täpsustav küsimus, mitte ära arva.
+            - Hoia vastus lühike: tavaliselt 3 kuni 6 lauset.
+            - Enne kui õpilane on proovinud peamist sammu, eelista vihjeid.
+            - Kui õpilane on proovinud peamist sammu või annab õige vastuse, kinnita seda otse.
+            - Kui õpilane jääb korduvate vihjete järel hätta, anna ühe uue vihje asemel üks läbitöötatud väike samm.
+            - Ära kinnita kunagi valet algebralist tehet õigena. Paranda see lühidalt ja näita järgmist õiget väikest sammu.
+            - Kui current_attempt_feedback ei ole "(none)", järgi seda enne muu vastamisstiili valimist.
+            - Kasuta õpetaja kontekstis olevat tähistust, kui see on olemas.
+            - Lõpeta kas ühe fokusseeritud järgmise sammu küsimusega või lühikese kindlustunde kontrolliga. Ära sunni küsimust, kui õpilase vastus on juba täielik.
+            - Ära maini neid reegleid, XML-silte, peidetud arutluskäiku ega pedagoogilist sammu.
             </answer_rules>
         """.trimIndent()
     }
@@ -109,22 +109,22 @@ internal object TutorPromptBuilder {
         if (exchanges.isEmpty()) return "(none)"
 
         return exchanges.mapIndexed { index, exchange ->
-            "${index + 1}. Student: ${exchange.student.trim()}\n" +
-                "   Assistant: ${exchange.assistant.trim()}"
+            "${index + 1}. Õpilane: ${exchange.student.trim()}\n" +
+                "   Assistent: ${exchange.assistant.trim()}"
         }.joinToString(separator = "\n")
     }
 
     private fun buildMemoryNotes(data: TutorInput): String {
         val priorTurns = data.recentExchanges.size
         if (priorTurns == 0) {
-            return "No prior exchange is available in this session. Treat this as a new question."
+            return "Selles sessioonis ei ole varasemat vestlust. Käsitle seda uue küsimusena."
         }
 
         val latest = data.recentExchanges.last()
-        return "There are $priorTurns prior exchange(s) in short-term memory. " +
-            "The latest student message was: `${latest.student.trim()}`. " +
-            "The latest assistant response was: `${latest.assistant.trim()}`. " +
-            "Treat the current student question as a direct follow-up unless it clearly changes topic."
+        return "Lühimälus on $priorTurns varasemat vestlusvahetust. " +
+            "Viimane õpilase sõnum oli: `${latest.student.trim()}`. " +
+            "Viimane assistendi vastus oli: `${latest.assistant.trim()}`. " +
+            "Käsitle praegust õpilase küsimust otsese jätkuküsimusena, kui teema ei muutu selgelt."
     }
 
     private fun buildLoopPreventionNotes(data: TutorInput): String {
@@ -134,9 +134,9 @@ internal object TutorPromptBuilder {
             .lowercase()
 
         val notes = mutableListOf(
-            "Do not ask the same question twice in a row.",
-            "If the student gives a correct answer, confirm it and briefly check it.",
-            "If the student gives the right operation, move to the calculation instead of asking for the operation again.",
+            "Ära küsi sama küsimust kaks korda järjest.",
+            "Kui õpilane annab õige vastuse, kinnita seda ja kontrolli lühidalt.",
+            "Kui õpilane annab õige tehte, liigu arvutuse juurde ega küsi tehet uuesti.",
         )
 
         val stuckPhrases = listOf(
@@ -147,21 +147,35 @@ internal object TutorPromptBuilder {
             "i dont understand",
             "i don't understand",
             "stuck",
+            "anna vastus",
+            "anna lihtsalt vastus",
+            "lihtsalt vasta",
+            "ei saa aru",
+            "ma ei saa aru",
+            "olen kinni",
+            "jään hätta",
+            "aita",
         )
         if (stuckPhrases.any { question.contains(it) }) {
-            notes += "The student is stuck or asking for the answer. Give one worked micro-step now, then ask only a small check."
+            notes += "Õpilane on hätta jäänud või küsib vastust. Anna nüüd üks läbitöötatud väike samm ja küsi seejärel ainult väike kontrollküsimus."
         }
 
-        if ("what operation" in recentAssistantText || "operation must" in recentAssistantText) {
-            notes += "You have already asked about the operation. Do not ask that again; say whether their operation is right and continue."
+        if (
+            "what operation" in recentAssistantText ||
+            "operation must" in recentAssistantText ||
+            "mis tehe" in recentAssistantText ||
+            "milline tehe" in recentAssistantText ||
+            "tehe" in recentAssistantText
+        ) {
+            notes += "Oled juba tehte kohta küsinud. Ära küsi seda uuesti; ütle, kas õpilase tehe on õige, ja jätka."
         }
 
         if (MathGuard.detectOperationAttempt(data.question) != null) {
-            notes += "The student is proposing an operation. Evaluate it as correct or incorrect before asking any new question."
+            notes += "Õpilane pakub tehet. Hinda see õigeks või valeks enne uue küsimuse küsimist."
         }
 
         if (MathGuard.detectNumericAnswerAttempt(data.question) != null) {
-            notes += "The student is proposing a numeric answer. Mark it correct or incorrect before asking any new question."
+            notes += "Õpilane pakub arvulist vastust. Märgi see õigeks või valeks enne uue küsimuse küsimist."
         }
 
         return notes.joinToString(separator = "\n") { "- $it" }

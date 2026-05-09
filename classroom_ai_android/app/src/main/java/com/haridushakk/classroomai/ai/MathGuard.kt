@@ -12,7 +12,7 @@ internal object MathGuard {
         option = RegexOption.IGNORE_CASE,
     )
     private val cuedAnswerRegex = Regex(
-        pattern = """\b(?:answer|solution|equals|equal to|is)\s*(?:x\s*)?(?:=|:)?\s*([+-]?(?:\d+(?:/\d+)?|\d*\.\d+))""",
+        pattern = """\b(?:answer|solution|equals|equal to|is|vastus|lahendus|võrdub|on)\s*(?:x\s*)?(?:=|:)?\s*([+-]?(?:\d+(?:/\d+)?|\d*\.\d+))""",
         option = RegexOption.IGNORE_CASE,
     )
 
@@ -23,11 +23,11 @@ internal object MathGuard {
         val coefficient = parsed.coefficient ?: return "(none)"
         val rightSide = parsed.rightSide ?: return "(none)"
         val solution = parsed.solution ?: return "(none)"
-        return "Detected simple equation `${parsed.equation}`. " +
-            "The inverse operation is to divide both sides by ${coefficient.format()}. " +
+        return "Tuvastatud lihtne võrrand `${parsed.equation}`. " +
+            "Pöördtehe on mõlema poole jagamine arvuga ${coefficient.format()}. " +
             "${rightSide.format()} / ${coefficient.format()} = ${solution.format()}, " +
-            "so x = ${solution.format()}. " +
-            "If the student says x = ${solution.format()}, confirm it as correct."
+            "seega x = ${solution.format()}. " +
+            "Kui õpilane ütleb x = ${solution.format()}, kinnita see õigeks."
     }
 
     fun buildCurrentAttemptFeedback(data: TutorInput): String {
@@ -42,20 +42,20 @@ internal object MathGuard {
         if (operationAttempt != null) {
             return when (operationAttempt) {
                 "division" -> {
-                    "The student proposed division. For this equation, that is the correct operation. " +
-                        "Do not ask for the operation again. Continue with the calculation: " +
-                        "divide both sides by ${coefficient.format()}, so x = ${solution.format()}."
+                    "Õpilane pakkus jagamist. Selle võrrandi puhul on see õige tehe. " +
+                        "Ära küsi tehet uuesti. Jätka arvutusega: " +
+                        "jaga mõlemad pooled arvuga ${coefficient.format()}, seega x = ${solution.format()}."
                 }
                 "multiplication" -> {
-                    "The student proposed multiplication. For this equation, that is incorrect. " +
-                        "In `${parsed.equation}`, x is already multiplied by ${coefficient.format()}, " +
-                        "so multiplying again makes the expression more complicated. " +
-                        "Correct them gently and state that division by ${coefficient.format()} is the inverse operation."
+                    "Õpilane pakkus korrutamist. Selle võrrandi puhul on see vale. " +
+                        "Võrrandis `${parsed.equation}` on x juba korrutatud arvuga ${coefficient.format()}, " +
+                        "nii et uuesti korrutamine teeb avaldise keerulisemaks. " +
+                        "Paranda seda rahulikult ja ütle, et pöördtehe on jagamine arvuga ${coefficient.format()}."
                 }
                 else -> {
-                    "The student proposed $operationAttempt. For `${parsed.equation}`, that is incorrect " +
-                        "because x is multiplied by ${coefficient.format()}. Correct them gently and say " +
-                        "the needed inverse operation is division by ${coefficient.format()}."
+                    "Õpilane pakkus tehet ${operationAttempt.toEstonianOperationName()}. Võrrandi `${parsed.equation}` puhul on see vale, " +
+                        "sest x on korrutatud arvuga ${coefficient.format()}. Paranda seda rahulikult ja ütle, " +
+                        "et vajalik pöördtehe on jagamine arvuga ${coefficient.format()}."
                 }
             }
         }
@@ -63,11 +63,11 @@ internal object MathGuard {
         val answerAttempt = detectNumericAnswerAttempt(data.question)
         if (answerAttempt != null) {
             return if (answerAttempt == solution) {
-                "The student proposed x = ${answerAttempt.format()}. That is correct. " +
-                    "Confirm directly and show the check: ${coefficient.format()} * ${solution.format()} = ${rightSide.format()}."
+                "Õpilane pakkus x = ${answerAttempt.format()}. See on õige. " +
+                    "Kinnita seda otse ja näita kontrolli: ${coefficient.format()} * ${solution.format()} = ${rightSide.format()}."
             } else {
-                "The student proposed x = ${answerAttempt.format()}. That is incorrect for `${parsed.equation}`. " +
-                    "The correct calculation is ${rightSide.format()} / ${coefficient.format()} = ${solution.format()}."
+                "Õpilane pakkus x = ${answerAttempt.format()}. See ei ole võrrandi `${parsed.equation}` puhul õige. " +
+                    "Õige arvutus on ${rightSide.format()} / ${coefficient.format()} = ${solution.format()}."
             }
         }
 
@@ -84,27 +84,27 @@ internal object MathGuard {
         val operationAttempt = detectOperationAttempt(data.question)
 
         if (operationAttempt == "division") {
-            return "Yes, division is the right operation here. In `${parsed.equation}`, `x` is multiplied by `${coefficient.format()}`, " +
-                "so we undo that by dividing both sides by `${coefficient.format()}`. " +
-                "That gives `x = ${rightSide.format()} / ${coefficient.format()}`. What does that simplify to?"
+            return "Jah, jagamine on siin õige tehe. Võrrandis `${parsed.equation}` on `x` korrutatud arvuga `${coefficient.format()}`, " +
+                "seega võtame selle tagasi, jagades mõlemad pooled arvuga `${coefficient.format()}`. " +
+                "Saame `x = ${rightSide.format()} / ${coefficient.format()}`. Mis see lihtsustatult on?"
         }
 
-        if (operationAttempt in setOf("addition", "subtraction", "multiplication")) {
-            return "Not quite. In `${parsed.equation}`, `x` is being multiplied by `${coefficient.format()}`, " +
-                "so $operationAttempt will not isolate `x`. The inverse operation is division: " +
-                "divide both sides by `${coefficient.format()}`. What is `${rightSide.format()} / ${coefficient.format()}`?"
+        if (operationAttempt != null && operationAttempt in setOf("addition", "subtraction", "multiplication")) {
+            return "Mitte päris. Võrrandis `${parsed.equation}` korrutatakse `x` arvuga `${coefficient.format()}`, " +
+                "nii et ${operationAttempt.toEstonianOperationName()} ei jäta `x`-i üksinda. Pöördtehe on jagamine: " +
+                "jaga mõlemad pooled arvuga `${coefficient.format()}`. Kui palju on `${rightSide.format()} / ${coefficient.format()}`?"
         }
 
         val answerAttempt = detectNumericAnswerAttempt(data.question)
         if (answerAttempt != null) {
             return if (answerAttempt == solution) {
-                "Yes, `x = ${answerAttempt.format()}` is correct. Check it by substituting back: " +
+                "Jah, `x = ${answerAttempt.format()}` on õige. Kontrollime asendamisega: " +
                     "`${coefficient.format()} * ${solution.format()} = ${rightSide.format()}`. " +
-                    "That matches the original equation."
+                    "See sobib algse võrrandiga."
             } else {
-                "Not quite. For `${parsed.equation}`, divide both sides by `${coefficient.format()}`: " +
+                "Mitte päris. Võrrandis `${parsed.equation}` jaga mõlemad pooled arvuga `${coefficient.format()}`: " +
                     "`x = ${rightSide.format()} / ${coefficient.format()} = ${solution.format()}`. " +
-                    "So the answer is `x = ${solution.format()}`."
+                    "Seega vastus on `x = ${solution.format()}`."
             }
         }
 
@@ -114,10 +114,10 @@ internal object MathGuard {
     fun detectOperationAttempt(question: String): String? {
         val text = question.lowercase()
         val operationWords = listOf(
-            "addition" to listOf("addition", "add", "plus"),
-            "subtraction" to listOf("subtraction", "subtract", "minus"),
-            "multiplication" to listOf("multiplication", "multiply", "times"),
-            "division" to listOf("division", "divide", "dividing", "divided", "÷"),
+            "addition" to listOf("addition", "add", "plus", "liitmine", "liita", "liidan", "pluss", "juurde"),
+            "subtraction" to listOf("subtraction", "subtract", "minus", "lahutamine", "lahuta", "lahutan", "miinus"),
+            "multiplication" to listOf("multiplication", "multiply", "times", "korrutamine", "korruta", "korrutan", "korda"),
+            "division" to listOf("division", "divide", "dividing", "divided", "÷", "jagamine", "jaga", "jagan", "jagada"),
         )
         return operationWords.firstOrNull { (_, words) ->
             words.any { word -> text.contains(word) }
@@ -146,18 +146,18 @@ internal object MathGuard {
             val coefficient = parseCoefficient(match.groupValues[1])
                 ?: return ParsedSimpleLinearEquation(
                     equation = match.value,
-                    error = "Detected an unsupported coefficient in `${match.value}`.",
+                    error = "Tuvastati toetamata kordaja avaldises `${match.value}`.",
                 )
             val rightSide = Rational.parse(match.groupValues[2])
                 ?: return ParsedSimpleLinearEquation(
                     equation = match.value,
-                    error = "Detected an unsupported right side in `${match.value}`.",
+                    error = "Tuvastati toetamata parem pool avaldises `${match.value}`.",
                 )
 
             if (coefficient == Rational.ZERO) {
                 return ParsedSimpleLinearEquation(
                     equation = match.value,
-                    error = "Detected coefficient 0; cannot isolate x by division.",
+                    error = "Tuvastati kordaja 0; x-i ei saa jagamisega eraldada.",
                 )
             }
 
@@ -187,6 +187,16 @@ internal object MathGuard {
         val solution: Rational? = null,
         val error: String? = null,
     )
+
+    private fun String.toEstonianOperationName(): String {
+        return when (this) {
+            "addition" -> "liitmine"
+            "subtraction" -> "lahutamine"
+            "multiplication" -> "korrutamine"
+            "division" -> "jagamine"
+            else -> this
+        }
+    }
 }
 
 internal data class Rational private constructor(
@@ -244,7 +254,7 @@ internal data class Rational private constructor(
         }
 
         private fun of(numerator: Long, denominator: Long): Rational {
-            require(denominator != 0L) { "Denominator cannot be zero." }
+            require(denominator != 0L) { "Nimetaja ei tohi olla null." }
             if (numerator == 0L) return ZERO
 
             val sign = if (denominator < 0) -1 else 1

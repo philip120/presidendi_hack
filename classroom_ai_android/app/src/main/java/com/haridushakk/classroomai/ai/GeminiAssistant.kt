@@ -32,7 +32,7 @@ class GeminiAssistant(
         }
 
         if (apiKey.isBlank()) {
-            error("Set GEMINI_API_KEY in local.properties before calling Gemini.")
+            error("Määra GEMINI_API_KEY failis local.properties enne Gemini kasutamist.")
         }
 
         val generativeModel = GenerativeModel(
@@ -59,12 +59,12 @@ class GeminiAssistant(
         hasWorkspaceImage: Boolean,
     ): TutorInput {
         val teacherContext = if (teacherMaterial.isBlank()) {
-            "No teacher material has been loaded for today's lesson yet. " +
-                "Answer from the student's current work and question, but do not complete assignments on the student's behalf."
+            "Õpetaja ei ole tänase tunni materjali veel lisanud. " +
+                "Vasta õpilase praeguse töö ja küsimuse põhjal, aga ära lahenda ülesandeid õpilase eest lõpuni."
         } else {
-            "Always base your answers on the following course material:\n\n$teacherMaterial\n\n" +
-                "If a student asks something outside this material, say: " +
-                "\"That seems outside today's lesson - let's focus on what we're covering today.\""
+            "Lähtuda tuleb alati järgmisest õppematerjalist:\n\n$teacherMaterial\n\n" +
+                "Kui õpilane küsib midagi väljaspool seda materjali, ütle: " +
+                "\"See paistab olevat väljaspool tänast tundi. Keskendume sellele, mida täna õpime.\""
         }
 
         val problemText = listOf(
@@ -109,13 +109,13 @@ class GeminiAssistant(
 
     private companion object {
         const val DEFAULT_INSTRUCTION_STYLE =
-            "Use Socratic questioning. Do not give the final answer immediately unless the " +
-                "student has already shown the key step. Give one hint at a time. Use the same " +
-                "notation used in class. Do not loop: once the student gives the right operation " +
-                "or a correct answer, confirm it directly and explain why."
+            "Kasuta sokraatilisi suunavaid küsimusi. Ära anna lõppvastust kohe, välja arvatud juhul, " +
+                "kui õpilane on juba näidanud peamist sammu. Anna üks vihje korraga. Kasuta sama tähistust, " +
+                "mida kasutatakse tunnis. Ära jää kordama: kui õpilane annab õige tehte või õige vastuse, " +
+                "kinnita seda otse ja selgita lühidalt, miks see on õige. Vasta alati eesti keeles."
 
         const val DEFAULT_STUDENT_STATE =
-            "Use only this session's notes and recent messages to infer the student's current understanding. " +
-                "Do not assume a stable profile beyond the current classroom session."
+            "Õpilase praeguse arusaamise hindamiseks kasuta ainult selle sessiooni märkmeid ja viimaseid sõnumeid. " +
+                "Ära eelda püsivat õpilasprofiili väljaspool käimasolevat klassisessiooni."
     }
 }

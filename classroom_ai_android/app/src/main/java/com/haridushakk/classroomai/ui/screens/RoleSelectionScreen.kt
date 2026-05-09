@@ -39,7 +39,7 @@ fun RoleSelectionScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Classroom AI",
+                text = "Klassiruumi AI",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -55,7 +55,7 @@ fun RoleSelectionScreen(
                     contentDescription = null,
                 )
                 Spacer(modifier = Modifier.widthIn(min = 12.dp))
-                Text(text = "I'm a Teacher")
+                Text(text = "Olen õpetaja")
             }
             Spacer(modifier = Modifier.height(12.dp))
             Button(
@@ -69,7 +69,7 @@ fun RoleSelectionScreen(
                     contentDescription = null,
                 )
                 Spacer(modifier = Modifier.widthIn(min = 12.dp))
-                Text(text = "I'm a Student")
+                Text(text = "Olen õpilane")
             }
         }
     }

@@ -13,7 +13,7 @@ class TeacherViewModelFactory(
         if (modelClass.isAssignableFrom(TeacherViewModel::class.java)) {
             return TeacherViewModel(repository) as T
         }
-        error("Unknown ViewModel class: ${modelClass.name}")
+        error("Tundmatu ViewModeli klass: ${modelClass.name}")
     }
 }
 
@@ -26,6 +26,6 @@ class StudentViewModelFactory(
         if (modelClass.isAssignableFrom(StudentViewModel::class.java)) {
             return StudentViewModel(repository, geminiAssistant) as T
         }
-        error("Unknown ViewModel class: ${modelClass.name}")
+        error("Tundmatu ViewModeli klass: ${modelClass.name}")
     }
 }
