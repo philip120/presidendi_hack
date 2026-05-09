@@ -30,7 +30,7 @@ fun ClassroomAiApp(
         }
         composable(Route.Teacher.path) {
             val teacherViewModel: TeacherViewModel = viewModel(
-                factory = TeacherViewModelFactory(repository),
+                factory = TeacherViewModelFactory(repository, geminiAssistant),
             )
             TeacherRoute(
                 viewModel = teacherViewModel,

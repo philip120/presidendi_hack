@@ -29,7 +29,10 @@ class MainActivity : ComponentActivity() {
 }
 
 private class ClassroomAiContainer(context: Context) {
-    val repository = ClassroomRepository(context.classroomDataStore)
+    val repository = ClassroomRepository(
+        dataStore = context.classroomDataStore,
+        filesDir = context.filesDir,
+    )
     val geminiAssistant = GeminiAssistant(
         apiKey = BuildConfig.GEMINI_API_KEY,
         modelName = BuildConfig.GEMINI_MODEL_NAME,

@@ -4,9 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
@@ -39,7 +39,7 @@ fun RoleSelectionScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Klassiruumi AI",
+                text = "Intelligentne Õpiabi",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -47,7 +47,7 @@ fun RoleSelectionScreen(
             Button(
                 onClick = onTeacherSelected,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .width(220.dp)
                     .widthIn(max = 360.dp),
             ) {
                 Icon(
@@ -61,7 +61,7 @@ fun RoleSelectionScreen(
             Button(
                 onClick = onStudentSelected,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .width(220.dp)
                     .widthIn(max = 360.dp),
             ) {
                 Icon(

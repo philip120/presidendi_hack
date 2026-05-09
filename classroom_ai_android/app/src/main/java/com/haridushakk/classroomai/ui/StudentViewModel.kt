@@ -28,6 +28,7 @@ import kotlin.math.min
 data class StudentUiState(
     val teacherMaterial: String = "",
     val notes: String = "",
+    val whiteboardImage: Bitmap? = null,
     val messages: List<ChatMessage> = emptyList(),
     val draftMessage: String = "",
     val isTextBoxVisible: Boolean = false,
@@ -113,6 +114,12 @@ class StudentViewModel(
         }
         viewModelScope.launch {
             repository.saveStudentNotes("")
+        }
+    }
+
+    fun onWhiteboardImageImported(bitmap: Bitmap) {
+        _uiState.update { state ->
+            state.copy(whiteboardImage = bitmap)
         }
     }
 
@@ -304,6 +311,14 @@ class StudentViewModel(
             finalQuestion
         }
         val notebookContent = if (hasHighlight) "" else state.notes
+        val modelInputForTeacher = buildModelInputForTeacher(
+            modelQuestion = modelQuestion,
+            notebookContent = notebookContent,
+            teacherMaterial = state.teacherMaterial,
+            history = state.messages,
+            includeWorkspaceImage = includeWorkspaceImage,
+            hasHighlight = hasHighlight,
+        )
 
         val previousHistory = state.messages
         val studentMessage = ChatMessage(
@@ -350,10 +365,17 @@ class StudentViewModel(
                         isTyping = false,
                     )
                 }
+                val modelImagePath = workspaceImage?.let { image ->
+                    runCatching {
+                        repository.saveConversationImage(studentMessage.id, image)
+                    }.getOrNull()
+                }
                 repository.saveConversationExchange(
                     ConversationExchange(
                         id = studentMessage.id,
                         question = finalQuestion,
+                        modelInput = modelInputForTeacher,
+                        modelImagePath = modelImagePath,
                         answer = answerText,
                         askedAtMillis = System.currentTimeMillis(),
                         includedWorkspace = includeWorkspaceImage,
@@ -370,6 +392,53 @@ class StudentViewModel(
                 }
             }
         }
+    }
+
+    private fun buildModelInputForTeacher(
+        modelQuestion: String,
+        notebookContent: String,
+        teacherMaterial: String,
+        history: List<ChatMessage>,
+        includeWorkspaceImage: Boolean,
+        hasHighlight: Boolean,
+    ): String {
+        val imageDescription = when {
+            hasHighlight -> "Mudelile saadeti pildina ainult vabakäega valitud tööala osa."
+            includeWorkspaceImage -> "Mudelile saadeti pildina kogu tööala."
+            else -> "Pilti ei saadetud."
+        }
+        val recentHistory = history.takeLast(6)
+            .joinToString(separator = "\n") { message ->
+                val role = when (message.role) {
+                    ChatRole.Student -> "Õpilane"
+                    ChatRole.Assistant -> "AI"
+                }
+                "$role: ${message.text.trimForTeacherLog(900)}"
+            }
+            .ifBlank { "(varasem vestlus puudub)" }
+
+        return buildString {
+            appendLine("Küsimus mudelile:")
+            appendLine(modelQuestion.trimForTeacherLog(1600))
+            appendLine()
+            appendLine("Õpilase märkmed / töö tekst:")
+            appendLine(notebookContent.trimForTeacherLog(2200).ifBlank { "(märkmeid ei lisatud)" })
+            appendLine()
+            appendLine("Tööala pilt:")
+            appendLine(imageDescription)
+            appendLine()
+            appendLine("Õpetaja materjal:")
+            appendLine(teacherMaterial.trimForTeacherLog(2200).ifBlank { "(õpetaja materjali ei olnud lisatud)" })
+            appendLine()
+            appendLine("Mudelile antud lähiajalugu:")
+            append(recentHistory)
+        }.trim().trimForTeacherLog(9000)
+    }
+
+    private fun String.trimForTeacherLog(maxLength: Int): String {
+        val normalized = trim()
+        if (normalized.length <= maxLength) return normalized
+        return normalized.take(maxLength).trimEnd() + "\n...(lühendatud)"
     }
 
     fun onErrorShown() {
@@ -394,10 +463,16 @@ class StudentViewModel(
         canvas.translate(state.viewportOffsetX, state.viewportOffsetY)
 
         if (state.notes.isNotBlank()) {
-            drawWrappedText(
+            drawWorkspaceTextObject(
                 canvas = canvas,
                 text = state.notes,
-                width = width,
+            )
+        }
+        state.whiteboardImage?.let { image ->
+            drawWorkspaceImageObject(
+                canvas = canvas,
+                bitmap = image,
+                top = state.notes.nextObjectTopAfterText(),
             )
         }
 
@@ -444,6 +519,128 @@ class StudentViewModel(
         canvas.restore()
 
         return output
+    }
+
+    private fun drawWorkspaceTextObject(
+        canvas: Canvas,
+        text: String,
+    ) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = AndroidColor.rgb(31, 41, 55)
+            textSize = TEXT_OBJECT_TEXT_SIZE_PX
+        }
+        val lines = text.toWrappedLines(
+            paint = paint,
+            maxLineWidth = TEXT_OBJECT_WIDTH_PX - 2 * TEXT_OBJECT_PADDING_PX,
+        )
+        val cardBottom = TEXT_OBJECT_TOP_PX +
+            TEXT_OBJECT_PADDING_PX * 2 +
+            lines.size * TEXT_OBJECT_LINE_HEIGHT_PX
+        val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = AndroidColor.rgb(255, 255, 255)
+            style = Paint.Style.FILL
+        }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = AndroidColor.rgb(209, 213, 219)
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        val bounds = RectF(
+            TEXT_OBJECT_LEFT_PX,
+            TEXT_OBJECT_TOP_PX,
+            TEXT_OBJECT_LEFT_PX + TEXT_OBJECT_WIDTH_PX,
+            cardBottom,
+        )
+        canvas.drawRoundRect(bounds, TEXT_OBJECT_RADIUS_PX, TEXT_OBJECT_RADIUS_PX, backgroundPaint)
+        canvas.drawRoundRect(bounds, TEXT_OBJECT_RADIUS_PX, TEXT_OBJECT_RADIUS_PX, borderPaint)
+
+        var y = TEXT_OBJECT_TOP_PX + TEXT_OBJECT_PADDING_PX + paint.textSize
+        lines.forEach { line ->
+            canvas.drawText(line, TEXT_OBJECT_LEFT_PX + TEXT_OBJECT_PADDING_PX, y, paint)
+            y += TEXT_OBJECT_LINE_HEIGHT_PX
+        }
+    }
+
+    private fun String.nextObjectTopAfterText(): Float {
+        if (isBlank()) return TEXT_OBJECT_TOP_PX
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = TEXT_OBJECT_TEXT_SIZE_PX
+        }
+        val lines = toWrappedLines(
+            paint = paint,
+            maxLineWidth = TEXT_OBJECT_WIDTH_PX - 2 * TEXT_OBJECT_PADDING_PX,
+        )
+        return TEXT_OBJECT_TOP_PX +
+            TEXT_OBJECT_PADDING_PX * 2 +
+            lines.size * TEXT_OBJECT_LINE_HEIGHT_PX +
+            OBJECT_GAP_PX
+    }
+
+    private fun String.toWrappedLines(
+        paint: Paint,
+        maxLineWidth: Float,
+    ): List<String> {
+        return buildList {
+            lineSequence().forEach { paragraph ->
+                val words = paragraph.split(Regex("\\s+")).filter { it.isNotBlank() }
+                if (words.isEmpty()) {
+                    add("")
+                    return@forEach
+                }
+
+                var line = ""
+                words.forEach { word ->
+                    val candidate = if (line.isBlank()) word else "$line $word"
+                    if (paint.measureText(candidate) <= maxLineWidth || line.isBlank()) {
+                        line = candidate
+                    } else {
+                        add(line)
+                        line = word
+                    }
+                }
+                if (line.isNotBlank()) {
+                    add(line)
+                }
+            }
+        }
+    }
+
+    private fun drawWorkspaceImageObject(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        top: Float,
+    ) {
+        val scale = min(
+            IMAGE_OBJECT_MAX_WIDTH_PX / bitmap.width.toFloat(),
+            IMAGE_OBJECT_MAX_HEIGHT_PX / bitmap.height.toFloat(),
+        ).coerceAtMost(1f)
+        val imageWidth = bitmap.width * scale
+        val imageHeight = bitmap.height * scale
+        val backgroundBounds = RectF(
+            TEXT_OBJECT_LEFT_PX,
+            top,
+            TEXT_OBJECT_LEFT_PX + imageWidth + IMAGE_OBJECT_PADDING_PX * 2,
+            top + imageHeight + IMAGE_OBJECT_PADDING_PX * 2,
+        )
+        val imageBounds = RectF(
+            backgroundBounds.left + IMAGE_OBJECT_PADDING_PX,
+            backgroundBounds.top + IMAGE_OBJECT_PADDING_PX,
+            backgroundBounds.left + IMAGE_OBJECT_PADDING_PX + imageWidth,
+            backgroundBounds.top + IMAGE_OBJECT_PADDING_PX + imageHeight,
+        )
+        val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = AndroidColor.rgb(255, 255, 255)
+            style = Paint.Style.FILL
+        }
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = AndroidColor.rgb(209, 213, 219)
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        canvas.drawRoundRect(backgroundBounds, TEXT_OBJECT_RADIUS_PX, TEXT_OBJECT_RADIUS_PX, backgroundPaint)
+        canvas.drawRoundRect(backgroundBounds, TEXT_OBJECT_RADIUS_PX, TEXT_OBJECT_RADIUS_PX, borderPaint)
+        canvas.drawBitmap(bitmap, null, imageBounds, null)
     }
 
     private fun drawWrappedText(
@@ -587,6 +784,17 @@ class StudentViewModel(
         const val DEFAULT_WORKSPACE_IMAGE_HEIGHT = 900
         const val WORKSPACE_IMAGE_PADDING_PX = 32f
         const val TEXT_LINE_HEIGHT_PX = 46f
+        const val TEXT_OBJECT_LEFT_PX = 64f
+        const val TEXT_OBJECT_TOP_PX = 96f
+        const val TEXT_OBJECT_WIDTH_PX = 680f
+        const val TEXT_OBJECT_PADDING_PX = 20f
+        const val TEXT_OBJECT_TEXT_SIZE_PX = 25f
+        const val TEXT_OBJECT_LINE_HEIGHT_PX = 34f
+        const val TEXT_OBJECT_RADIUS_PX = 14f
+        const val IMAGE_OBJECT_PADDING_PX = 12f
+        const val IMAGE_OBJECT_MAX_WIDTH_PX = 680f
+        const val IMAGE_OBJECT_MAX_HEIGHT_PX = 420f
+        const val OBJECT_GAP_PX = 24f
         const val MIN_VIEWPORT_SCALE = 0.5f
         const val MAX_VIEWPORT_SCALE = 3f
         const val ZOOM_STEP = 1.25f

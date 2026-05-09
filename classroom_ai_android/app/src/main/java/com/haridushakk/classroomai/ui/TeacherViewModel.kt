@@ -2,6 +2,7 @@ package com.haridushakk.classroomai.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.haridushakk.classroomai.ai.GeminiAssistant
 import com.haridushakk.classroomai.data.ClassroomRepository
 import com.haridushakk.classroomai.data.ConversationExchange
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,8 @@ data class TeacherUiState(
     val conversations: List<ConversationExchange> = emptyList(),
     val dashboard: TeacherDashboard = TeacherDashboard(),
     val generatedSummary: String = "",
+    val isGeneratingSummary: Boolean = false,
+    val summaryError: String? = null,
 )
 
 data class TeacherDashboard(
@@ -29,6 +32,7 @@ data class TeacherDashboard(
     val commonQuestions: List<QuestionInsight> = emptyList(),
     val commonTopics: List<TopicInsight> = emptyList(),
     val recentConversations: List<ConversationExchange> = emptyList(),
+    val behaviorInsights: List<BehaviorInsight> = emptyList(),
 )
 
 data class QuestionInsight(
@@ -41,8 +45,15 @@ data class TopicInsight(
     val count: Int,
 )
 
+data class BehaviorInsight(
+    val label: String,
+    val description: String,
+    val count: Int,
+)
+
 class TeacherViewModel(
     private val repository: ClassroomRepository,
+    private val geminiAssistant: GeminiAssistant,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TeacherUiState())
     val uiState: StateFlow<TeacherUiState> = _uiState.asStateFlow()
@@ -133,8 +144,44 @@ class TeacherViewModel(
     }
 
     fun generateConversationSummary() {
+        val conversations = _uiState.value.conversations
+        if (conversations.isEmpty()) {
+            _uiState.update { state ->
+                state.copy(
+                    generatedSummary = "Õpilaste vestlusi ei ole veel salvestatud.",
+                    summaryError = null,
+                )
+            }
+            return
+        }
+
         _uiState.update { state ->
-            state.copy(generatedSummary = state.conversations.toTeacherSummary())
+            state.copy(
+                isGeneratingSummary = true,
+                summaryError = null,
+            )
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                geminiAssistant.summarizeTeacherConversations(conversations)
+            }.onSuccess { summary ->
+                _uiState.update { state ->
+                    state.copy(
+                        generatedSummary = summary.ifBlank { conversations.toTeacherSummary() },
+                        isGeneratingSummary = false,
+                        summaryError = null,
+                    )
+                }
+            }.onFailure {
+                _uiState.update { state ->
+                    state.copy(
+                        generatedSummary = conversations.toTeacherSummary(),
+                        isGeneratingSummary = false,
+                        summaryError = "AI kokkuvõtet ei saanud luua. Kuvan kohaliku kokkuvõtte.",
+                    )
+                }
+            }
         }
     }
 
@@ -142,7 +189,11 @@ class TeacherViewModel(
         viewModelScope.launch {
             repository.clearConversationExchanges()
             _uiState.update { state ->
-                state.copy(generatedSummary = "")
+                state.copy(
+                    generatedSummary = "",
+                    isGeneratingSummary = false,
+                    summaryError = null,
+                )
             }
         }
     }
@@ -182,6 +233,7 @@ class TeacherViewModel(
             commonQuestions = questionGroups.take(5),
             commonTopics = topics.take(8),
             recentConversations = sortedByDescending { it.askedAtMillis }.take(6),
+            behaviorInsights = toBehaviorInsights(),
         )
     }
 
@@ -191,13 +243,9 @@ class TeacherViewModel(
         }
 
         val dashboard = toDashboard()
-        val topTopics = dashboard.commonTopics.take(5).joinToString { "${it.topic} (${it.count})" }
-            .ifBlank { "korduvaid teemasid pole veel piisavalt" }
-        val repeatedQuestions = dashboard.commonQuestions
-            .filter { it.count > 1 }
-            .take(3)
-            .joinToString(separator = "\n") { "- ${it.question} (${it.count} korda)" }
-            .ifBlank { "- Täpselt korduvaid küsimusi ei ole veel." }
+        val behaviorLines = dashboard.behaviorInsights
+            .joinToString(separator = "\n") { "- ${it.label}: ${it.count}×. ${it.description}" }
+            .ifBlank { "- Selget korduvat mustrit pole veel piisavalt." }
         val workspaceShare = ((dashboard.workspaceQuestions.toFloat() / dashboard.totalQuestions) * 100f)
             .roundToInt()
         val highlightShare = ((dashboard.highlightedQuestions.toFloat() / dashboard.totalQuestions) * 100f)
@@ -206,16 +254,45 @@ class TeacherViewModel(
         return buildString {
             appendLine("Kokkuvõte põhineb ${dashboard.totalQuestions} salvestatud õpilasküsimusel.")
             appendLine()
-            appendLine("Sagedasemad teemad: $topTopics.")
-            appendLine()
-            appendLine("Korduvad küsimused:")
-            appendLine(repeatedQuestions)
+            appendLine("Peamised signaalid:")
+            appendLine(behaviorLines)
             appendLine()
             appendLine("Tööala kasutus: ${dashboard.workspaceQuestions} küsimust kasutas tööala pilti ($workspaceShare%).")
             appendLine("Fookustatud valikud: ${dashboard.highlightedQuestions} küsimust kasutas valitud piirkonda ($highlightShare%).")
             appendLine()
-            append("Soovitus õpetajale: korda sagedasemaid teemasid ja käsitle korduvaid küsimusi järgmise tunni alguses.")
+            append("Soovitus õpetajale: alusta järgmine tund lühikese esimese sammu näitega ja lase õpilastel põhjendada, miks just see samm valiti.")
         }.trim()
+    }
+
+    private fun List<ConversationExchange>.toBehaviorInsights(): List<BehaviorInsight> {
+        val counts = InsightDefinitions.associateWith { 0 }.toMutableMap()
+        forEach { exchange ->
+            val matched = InsightDefinitions.filter { definition ->
+                definition.matches(exchange)
+            }
+            if (matched.isEmpty()) {
+                counts[DefaultInsight] = counts.getValue(DefaultInsight) + 1
+            } else {
+                matched.forEach { definition ->
+                    counts[definition] = counts.getValue(definition) + 1
+                }
+            }
+        }
+
+        return InsightDefinitions
+            .map { definition ->
+                BehaviorInsight(
+                    label = definition.label,
+                    description = definition.description,
+                    count = counts.getValue(definition),
+                )
+            }
+            .filter { it.count > 0 }
+            .sortedWith(
+                compareByDescending<BehaviorInsight> { it.count }
+                    .thenBy { insight -> InsightDefinitions.indexOfFirst { it.label == insight.label } },
+            )
+            .take(4)
     }
 
     private fun String.normalizedQuestion(): String {
@@ -234,6 +311,93 @@ class TeacherViewModel(
     }
 
     private companion object {
+        val StartTroubleInsight = InsightDefinition(
+            label = "Ei saa üldse aru",
+            description = "Õpilane vajab abi alustamiseks või ei leia järgmist sammu.",
+            keywords = listOf(
+                "ei saa aru",
+                "ma ei saa aru",
+                "dont understand",
+                "don't understand",
+                "i dont understand",
+                "i don't understand",
+                "what should i focus",
+                "millele peaksin",
+                "kust alustada",
+                "aita",
+                "help",
+                "stuck",
+                "kinni",
+                "hätta",
+            ),
+        )
+        val FollowUpInsight = InsightDefinition(
+            label = "Küsib lisaküsimusi",
+            description = "Õpilane otsib kinnitust, selgitust või järgmist vihjet.",
+            keywords = listOf(
+                "miks",
+                "kuidas",
+                "mida",
+                "millal",
+                "kas",
+                "why",
+                "how",
+                "what",
+                "explain",
+                "selgita",
+                "like this",
+                "nii",
+            ),
+        )
+        val WantsAnswerInsight = InsightDefinition(
+            label = "Tahab kohe vastust",
+            description = "Õpilane liigub vastuse küsimise poole enne põhjendamist.",
+            keywords = listOf(
+                "just give",
+                "give me the answer",
+                "give answer",
+                "answer",
+                "solution",
+                "anna vastus",
+                "lihtsalt vasta",
+                "vastus",
+                "lahendus",
+            ),
+        )
+        val ChecksWorkInsight = InsightDefinition(
+            label = "Kontrollib lahendust",
+            description = "Õpilane tahab teada, kas tema vahe- või lõppsamm on õige.",
+            keywords = listOf(
+                "is it correct",
+                "correct now",
+                "correct",
+                "kas see on õige",
+                "õige",
+                "kontrolli",
+                "check",
+                "verify",
+            ),
+        )
+        val VisualHelpInsight = InsightDefinition(
+            label = "Vajab visuaalset abi",
+            description = "Õpilane kasutab tööala pilti või valitud piirkonda, et probleemi täpsustada.",
+            keywords = emptyList(),
+            predicate = { exchange -> exchange.includedWorkspace || exchange.usedHighlight },
+        )
+        val DefaultInsight = InsightDefinition(
+            label = "Sisuline abi",
+            description = "Õpilane küsib konkreetse ülesande või mõiste kohta.",
+            keywords = emptyList(),
+        )
+        val InsightDefinitions = listOf(
+            StartTroubleInsight,
+            FollowUpInsight,
+            WantsAnswerInsight,
+            ChecksWorkInsight,
+            VisualHelpInsight,
+            DefaultInsight,
+        )
+
         val StopWords = setOf(
             "about",
             "after",
@@ -302,5 +466,17 @@ class TeacherViewModel(
             "võiks",
             "või",
         )
+    }
+}
+
+private data class InsightDefinition(
+    val label: String,
+    val description: String,
+    val keywords: List<String>,
+    val predicate: (ConversationExchange) -> Boolean = { false },
+) {
+    fun matches(exchange: ConversationExchange): Boolean {
+        val combinedText = "${exchange.question}\n${exchange.modelInput}\n${exchange.answer}".lowercase()
+        return predicate(exchange) || keywords.any { keyword -> keyword in combinedText }
     }
 }

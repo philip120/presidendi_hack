@@ -5,6 +5,7 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.haridushakk.classroomai.data.ChatMessage
 import com.haridushakk.classroomai.data.ChatRole
+import com.haridushakk.classroomai.data.ConversationExchange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -49,6 +50,35 @@ class GeminiAssistant(
         }
 
         generativeModel.generateContent(promptContent).text?.trim().orEmpty()
+    }
+
+    suspend fun summarizeTeacherConversations(
+        conversations: List<ConversationExchange>,
+    ): String = withContext(Dispatchers.IO) {
+        if (conversations.isEmpty()) {
+            return@withContext "Õpilaste vestlusi ei ole veel salvestatud."
+        }
+
+        if (apiKey.isBlank()) {
+            error("Määra GEMINI_API_KEY failis local.properties enne Gemini kasutamist.")
+        }
+
+        val generativeModel = GenerativeModel(
+            modelName = modelName,
+            apiKey = apiKey,
+            systemInstruction = content {
+                text(
+                    "Oled õpetaja analüüsi assistent. Koosta ainult õpetajale mõeldud lühike, " +
+                        "selge ja tegevustele suunatud kokkuvõte eesti keeles.",
+                )
+            },
+        )
+        val prompt = buildTeacherSummaryPrompt(conversations)
+        generativeModel.generateContent(
+            content {
+                text(prompt)
+            },
+        ).text?.trim().orEmpty()
     }
 
     private fun buildTutorInput(
@@ -105,6 +135,56 @@ class GeminiAssistant(
         }
 
         return exchanges.takeLast(maxExchanges)
+    }
+
+    private fun buildTeacherSummaryPrompt(conversations: List<ConversationExchange>): String {
+        val transcript = conversations
+            .sortedBy { it.askedAtMillis }
+            .joinToString(separator = "\n\n") { exchange ->
+                """
+                Vestlus ${exchange.id}
+                Õpilase küsimus: ${exchange.question.clipForTeacherSummary(700)}
+                Mudelile saadetud: ${exchange.modelInput.clipForTeacherSummary(1200)}
+                AI vastus: ${exchange.answer.clipForTeacherSummary(900)}
+                Tööala pilt: ${if (exchange.includedWorkspace) "jah" else "ei"}
+                Vabakäe valik: ${if (exchange.usedHighlight) "jah" else "ei"}
+                """.trimIndent()
+            }
+
+        return """
+            Koosta õpetajale väga loetav ja lühike insight-kokkuvõte kõigi allolevate õpilasvestluste põhjal.
+
+            Eesmärk ei ole loetleda täpseid küsimusi. Eesmärk on anda õpetajale 3-4 üldist ja kasulikku märksõna
+            õpilaste käitumise ja arusaamise kohta, näiteks "ei saa üldse aru", "küsib lisaküsimusi",
+            "tahab kohe vastust", "kontrollib lahendust".
+
+            Kasuta seda vormi:
+            **Peamised signaalid**
+            - **Märksõna:** üks lühike selgitav lause.
+            - **Märksõna:** üks lühike selgitav lause.
+            - **Märksõna:** üks lühike selgitav lause.
+
+            **Õpetaja järgmine samm**
+            Üks konkreetne soovitus järgmise tunni alustamiseks.
+
+            Reeglid:
+            - Ära tee pikka esseed ega nelja suurt peatükki.
+            - Kasuta 3 kuni 4 märksõna.
+            - Keskendu käitumuslikele mustritele ja õppimisraskustele, mitte toorele sõnasagedusele.
+            - Arvesta ka sellega, mida mudelile tegelikult saadeti.
+            - Kui kasutad matemaatikat, kirjuta see LaTeXina.
+            - Vasta ainult eesti keeles.
+
+            <vestlused>
+            $transcript
+            </vestlused>
+        """.trimIndent()
+    }
+
+    private fun String.clipForTeacherSummary(maxLength: Int): String {
+        val normalized = trim()
+        if (normalized.length <= maxLength) return normalized
+        return normalized.take(maxLength).trimEnd() + "\n...(lühendatud)"
     }
 
     private companion object {

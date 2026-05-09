@@ -1,5 +1,12 @@
 package com.haridushakk.classroomai.ui.screens
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
+import android.graphics.RectF as AndroidRectF
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -33,7 +40,9 @@ import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -62,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
@@ -90,6 +100,8 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
+private const val SHOWCASE_IMAGE_ASSET_PATH = "imgs"
+
 @Composable
 fun StudentRoute(
     viewModel: StudentViewModel,
@@ -97,6 +109,42 @@ fun StudentRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var isShowcaseImagePickerOpen by remember { mutableStateOf(false) }
+    val showcaseImageNames = remember {
+        context.assets.list(SHOWCASE_IMAGE_ASSET_PATH)
+            .orEmpty()
+            .filter { it.isShowcaseImageName() }
+            .sorted()
+    }
+    val imageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val bitmap = runCatching {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            context.contentResolver.openInputStream(uri)
+                ?.use { inputStream -> BitmapFactory.decodeStream(inputStream) }
+        }.getOrNull()
+        if (bitmap != null) {
+            viewModel.onWhiteboardImageImported(bitmap)
+        }
+    }
+    fun importShowcaseImage(fileName: String) {
+        val bitmap = runCatching {
+            context.assets.open("$SHOWCASE_IMAGE_ASSET_PATH/$fileName").use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        }.getOrNull()
+        if (bitmap != null) {
+            viewModel.onWhiteboardImageImported(bitmap)
+        }
+    }
 
     LaunchedEffect(uiState.errorMessage) {
         val message = uiState.errorMessage ?: return@LaunchedEffect
@@ -110,6 +158,7 @@ fun StudentRoute(
         onBack = onBack,
         onNotesChanged = viewModel::onNotesChanged,
         onClearNotes = viewModel::clearNotes,
+        onImportWhiteboardImage = { isShowcaseImagePickerOpen = true },
         onDraftMessageChanged = viewModel::onDraftMessageChanged,
         onSendMessage = viewModel::sendMessage,
         onAskWorkspace = viewModel::askAboutWorkspace,
@@ -126,6 +175,78 @@ fun StudentRoute(
         onZoomOut = viewModel::zoomOut,
         onResetViewport = viewModel::resetViewport,
     )
+
+    if (isShowcaseImagePickerOpen) {
+        ShowcaseImagePickerDialog(
+            imageNames = showcaseImageNames,
+            onSelectImage = { fileName ->
+                importShowcaseImage(fileName)
+                isShowcaseImagePickerOpen = false
+            },
+            onBrowseDevice = {
+                isShowcaseImagePickerOpen = false
+                imageLauncher.launch(arrayOf("image/*"))
+            },
+            onDismiss = {
+                isShowcaseImagePickerOpen = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun ShowcaseImagePickerDialog(
+    imageNames: List<String>,
+    onSelectImage: (String) -> Unit,
+    onBrowseDevice: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "Vali demopilt")
+        },
+        text = {
+            if (imageNames.isEmpty()) {
+                Text(
+                    text = "Pane pildid kausta app/src/main/assets/imgs ja ehita app uuesti.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 280.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(imageNames) { fileName ->
+                        TextButton(
+                            onClick = { onSelectImage(fileName) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(text = fileName)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onBrowseDevice) {
+                Text(text = "Sirvi seadmest")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Sulge")
+            }
+        },
+    )
+}
+
+private fun String.isShowcaseImageName(): Boolean {
+    val name = lowercase()
+    return name.endsWith(".png") ||
+        name.endsWith(".jpg") ||
+        name.endsWith(".jpeg") ||
+        name.endsWith(".webp")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -136,6 +257,7 @@ private fun StudentScreen(
     onBack: () -> Unit,
     onNotesChanged: (String) -> Unit,
     onClearNotes: () -> Unit,
+    onImportWhiteboardImage: () -> Unit,
     onDraftMessageChanged: (String) -> Unit,
     onSendMessage: () -> Unit,
     onAskWorkspace: () -> Unit,
@@ -180,6 +302,7 @@ private fun StudentScreen(
                 uiState = uiState,
                 onNotesChanged = onNotesChanged,
                 onClearNotes = onClearNotes,
+                onImportWhiteboardImage = onImportWhiteboardImage,
                 onAskWorkspace = onAskWorkspace,
                 onToggleTextBox = onToggleTextBox,
                 onDrawingToolChanged = onDrawingToolChanged,
@@ -228,6 +351,7 @@ private fun WorkspacePanel(
     uiState: StudentUiState,
     onNotesChanged: (String) -> Unit,
     onClearNotes: () -> Unit,
+    onImportWhiteboardImage: () -> Unit,
     onAskWorkspace: () -> Unit,
     onToggleTextBox: () -> Unit,
     onDrawingToolChanged: (DrawingTool) -> Unit,
@@ -273,6 +397,7 @@ private fun WorkspacePanel(
         WorkspaceToolbar(
             uiState = uiState,
             onAskWorkspace = onAskWorkspace,
+            onImportWhiteboardImage = onImportWhiteboardImage,
             onToggleTextBox = onToggleTextBox,
             onDrawingToolChanged = onDrawingToolChanged,
             onUndoDrawing = onUndoDrawing,
@@ -306,6 +431,7 @@ private fun WorkspacePanel(
 private fun WorkspaceToolbar(
     uiState: StudentUiState,
     onAskWorkspace: () -> Unit,
+    onImportWhiteboardImage: () -> Unit,
     onToggleTextBox: () -> Unit,
     onDrawingToolChanged: (DrawingTool) -> Unit,
     onUndoDrawing: () -> Unit,
@@ -337,6 +463,16 @@ private fun WorkspaceToolbar(
                     },
                 )
             }
+            DrawingToolButton(
+                selected = uiState.whiteboardImage != null,
+                onClick = onImportWhiteboardImage,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.UploadFile,
+                        contentDescription = "Lisa pilt",
+                    )
+                },
+            )
             DrawingToolButton(
                 selected = uiState.drawingTool == DrawingTool.Pen,
                 onClick = { onDrawingToolChanged(DrawingTool.Pen) },
@@ -429,6 +565,7 @@ private fun WorkspaceToolbar(
                     (uiState.notes.isNotBlank() ||
                         uiState.drawingStrokes.isNotEmpty() ||
                         uiState.activeDrawingStroke != null ||
+                        uiState.whiteboardImage != null ||
                         uiState.highlightSelection != null ||
                         uiState.activeHighlightSelection != null ||
                         uiState.draftMessage.isNotBlank()),
@@ -570,6 +707,21 @@ private fun DrawingCanvas(
                 viewportOffsetY = uiState.viewportOffsetY,
                 viewportScale = uiState.viewportScale,
             )
+            drawWhiteboardTextObject(
+                text = uiState.notes,
+                viewportOffsetX = uiState.viewportOffsetX,
+                viewportOffsetY = uiState.viewportOffsetY,
+                viewportScale = uiState.viewportScale,
+            )
+            uiState.whiteboardImage?.let { bitmap ->
+                drawWhiteboardImageObject(
+                    bitmap = bitmap,
+                    top = uiState.notes.nextWhiteboardObjectTop(),
+                    viewportOffsetX = uiState.viewportOffsetX,
+                    viewportOffsetY = uiState.viewportOffsetY,
+                    viewportScale = uiState.viewportScale,
+                )
+            }
             (strokes + listOfNotNull(activeStroke)).forEach { stroke ->
                 drawStroke(
                     stroke = stroke,
@@ -594,6 +746,153 @@ private fun DrawingCanvas(
 
 private const val DOT_GRID_SPACING_PX = 32f
 private const val DOT_GRID_RADIUS_PX = 1.35f
+private const val TEXT_OBJECT_LEFT_PX = 64f
+private const val TEXT_OBJECT_TOP_PX = 96f
+private const val TEXT_OBJECT_WIDTH_PX = 680f
+private const val TEXT_OBJECT_PADDING_PX = 20f
+private const val TEXT_OBJECT_TEXT_SIZE_PX = 25f
+private const val TEXT_OBJECT_LINE_HEIGHT_PX = 34f
+private const val TEXT_OBJECT_RADIUS_PX = 14f
+private const val IMAGE_OBJECT_PADDING_PX = 12f
+private const val IMAGE_OBJECT_MAX_WIDTH_PX = 680f
+private const val IMAGE_OBJECT_MAX_HEIGHT_PX = 420f
+private const val OBJECT_GAP_PX = 24f
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWhiteboardTextObject(
+    text: String,
+    viewportOffsetX: Float,
+    viewportOffsetY: Float,
+    viewportScale: Float,
+) {
+    if (text.isBlank()) return
+
+    val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.rgb(31, 41, 55)
+        textSize = TEXT_OBJECT_TEXT_SIZE_PX * viewportScale
+    }
+    val lines = text.toWrappedCanvasLines(
+        paint = paint,
+        maxLineWidth = (TEXT_OBJECT_WIDTH_PX - 2 * TEXT_OBJECT_PADDING_PX) * viewportScale,
+    )
+    val left = (TEXT_OBJECT_LEFT_PX + viewportOffsetX) * viewportScale
+    val top = (TEXT_OBJECT_TOP_PX + viewportOffsetY) * viewportScale
+    val width = TEXT_OBJECT_WIDTH_PX * viewportScale
+    val padding = TEXT_OBJECT_PADDING_PX * viewportScale
+    val lineHeight = TEXT_OBJECT_LINE_HEIGHT_PX * viewportScale
+    val bottom = top + padding * 2 + lines.size * lineHeight
+    val radius = TEXT_OBJECT_RADIUS_PX * viewportScale
+    val bounds = AndroidRectF(left, top, left + width, bottom)
+    val backgroundPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE
+        style = AndroidPaint.Style.FILL
+    }
+    val borderPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.rgb(209, 213, 219)
+        style = AndroidPaint.Style.STROKE
+        strokeWidth = (2f * viewportScale).coerceAtLeast(1f)
+    }
+
+    drawContext.canvas.nativeCanvas.apply {
+        drawRoundRect(bounds, radius, radius, backgroundPaint)
+        drawRoundRect(bounds, radius, radius, borderPaint)
+        var y = top + padding + paint.textSize
+        lines.forEach { line ->
+            drawText(line, left + padding, y, paint)
+            y += lineHeight
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWhiteboardImageObject(
+    bitmap: Bitmap,
+    top: Float,
+    viewportOffsetX: Float,
+    viewportOffsetY: Float,
+    viewportScale: Float,
+) {
+    val imageScale = min(
+        IMAGE_OBJECT_MAX_WIDTH_PX / bitmap.width.toFloat(),
+        IMAGE_OBJECT_MAX_HEIGHT_PX / bitmap.height.toFloat(),
+    ).coerceAtMost(1f)
+    val imageWidth = bitmap.width * imageScale * viewportScale
+    val imageHeight = bitmap.height * imageScale * viewportScale
+    val padding = IMAGE_OBJECT_PADDING_PX * viewportScale
+    val left = (TEXT_OBJECT_LEFT_PX + viewportOffsetX) * viewportScale
+    val screenTop = (top + viewportOffsetY) * viewportScale
+    val backgroundBounds = AndroidRectF(
+        left,
+        screenTop,
+        left + imageWidth + padding * 2,
+        screenTop + imageHeight + padding * 2,
+    )
+    val imageBounds = AndroidRectF(
+        backgroundBounds.left + padding,
+        backgroundBounds.top + padding,
+        backgroundBounds.left + padding + imageWidth,
+        backgroundBounds.top + padding + imageHeight,
+    )
+    val radius = TEXT_OBJECT_RADIUS_PX * viewportScale
+    val backgroundPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE
+        style = AndroidPaint.Style.FILL
+    }
+    val borderPaint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.rgb(209, 213, 219)
+        style = AndroidPaint.Style.STROKE
+        strokeWidth = (2f * viewportScale).coerceAtLeast(1f)
+    }
+
+    drawContext.canvas.nativeCanvas.apply {
+        drawRoundRect(backgroundBounds, radius, radius, backgroundPaint)
+        drawRoundRect(backgroundBounds, radius, radius, borderPaint)
+        drawBitmap(bitmap, null, imageBounds, null)
+    }
+}
+
+private fun String.toWrappedCanvasLines(
+    paint: AndroidPaint,
+    maxLineWidth: Float,
+): List<String> {
+    return buildList {
+        lineSequence().forEach { paragraph ->
+            val words = paragraph.split(Regex("\\s+")).filter { it.isNotBlank() }
+            if (words.isEmpty()) {
+                add("")
+                return@forEach
+            }
+
+            var line = ""
+            words.forEach { word ->
+                val candidate = if (line.isBlank()) word else "$line $word"
+                if (paint.measureText(candidate) <= maxLineWidth || line.isBlank()) {
+                    line = candidate
+                } else {
+                    add(line)
+                    line = word
+                }
+            }
+            if (line.isNotBlank()) {
+                add(line)
+            }
+        }
+    }
+}
+
+private fun String.nextWhiteboardObjectTop(): Float {
+    if (isBlank()) return TEXT_OBJECT_TOP_PX
+
+    val paint = AndroidPaint(AndroidPaint.ANTI_ALIAS_FLAG).apply {
+        textSize = TEXT_OBJECT_TEXT_SIZE_PX
+    }
+    val lines = toWrappedCanvasLines(
+        paint = paint,
+        maxLineWidth = TEXT_OBJECT_WIDTH_PX - 2 * TEXT_OBJECT_PADDING_PX,
+    )
+    return TEXT_OBJECT_TOP_PX +
+        TEXT_OBJECT_PADDING_PX * 2 +
+        lines.size * TEXT_OBJECT_LINE_HEIGHT_PX +
+        OBJECT_GAP_PX
+}
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDottedBackground(
     viewportOffsetX: Float,
@@ -854,7 +1153,7 @@ private val SubscriptStyle = SpanStyle(
     fontSize = 0.78.em,
 )
 
-private fun String.toLatexAnnotatedString(): AnnotatedString {
+internal fun String.toLatexAnnotatedString(): AnnotatedString {
     return buildAnnotatedString {
         appendLatexAwareText(this@toLatexAnnotatedString)
     }
